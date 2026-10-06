@@ -26,13 +26,31 @@ final readonly class FulfilmentService
     ) {}
 
     /**
+     * Cancels the order. A pending order whose checkout has begun has its
+     * checkout session expired first, so the buyer can no longer pay
+     * through it.
+     *
+     * If the session is already complete (the buyer paid, or a delayed
+     * payment is on its way), it cannot be expired; the order is cancelled
+     * all the same, and completing the session later refunds the payment in
+     * full (CompletionOutcome::RefundedCancelled). If the provider cannot
+     * be reached, the order is left as it was and the exception propagates,
+     * so that cancelling can be retried.
+     *
      * @throws InvalidTransitionException When the order can no longer be cancelled.
+     * @throws PaymentFailedException When the checkout session could not be expired.
      * @throws DbModelException
      */
     public function cancelOrder(AbstractOrderEntity $order): void
     {
+        $next      = $order->status->transitionTo(OrderStatus::Cancelled);
+        $sessionId = $order->stripeCheckoutSessionId;
+        if (OrderStatus::Pending === $order->status && null !== $sessionId) {
+            $this->gateway->expireCheckoutSession($sessionId);
+        }
+
         $now                = $this->store->now();
-        $order->status      = $order->status->transitionTo(OrderStatus::Cancelled);
+        $order->status      = $next;
         $order->cancelledAt = $now;
         $order->updated     = $now;
         $this->store->save($order);

@@ -56,6 +56,7 @@ final readonly class OrderManager
      * @see FulfilmentService::cancelOrder()
      *
      * @throws InvalidTransitionException When the order can no longer be cancelled.
+     * @throws PaymentFailedException When the checkout session could not be expired.
      * @throws DbModelException
      */
     public function cancelOrder(AbstractOrderEntity $order): void

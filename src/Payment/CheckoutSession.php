@@ -15,6 +15,10 @@ final readonly class CheckoutSession
 {
     public const string STATUS_COMPLETE = 'complete';
 
+    public const string STATUS_EXPIRED = 'expired';
+
+    public const string STATUS_OPEN = 'open';
+
     public const string PAYMENT_STATUS_PAID = 'paid';
 
     /**
@@ -35,6 +39,14 @@ final readonly class CheckoutSession
     public function isComplete(): bool
     {
         return self::STATUS_COMPLETE === $this->status;
+    }
+
+    /**
+     * The customer can still pay through the session.
+     */
+    public function isOpen(): bool
+    {
+        return self::STATUS_OPEN === $this->status;
     }
 
     /**

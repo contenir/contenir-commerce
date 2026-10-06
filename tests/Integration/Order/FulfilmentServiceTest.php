@@ -7,6 +7,10 @@ namespace Contenir\Commerce\Tests\Integration\Order;
 use Contenir\Commerce\Exception\InvalidTransitionException;
 use Contenir\Commerce\Exception\PaymentFailedException;
 use Contenir\Commerce\Money\Money;
+use Contenir\Commerce\Order\CompletionOutcome;
+use Contenir\Commerce\Order\OrderStatus;
+use Contenir\Commerce\Payment\CheckoutSession;
+use Contenir\Commerce\Tests\TestAsset\Factory\CommerceFactory;
 use Contenir\Commerce\Tests\Trait\OrderServicesTrait;
 use Override;
 use PHPUnit\Framework\Attributes\Group;
@@ -33,6 +37,20 @@ final class FulfilmentServiceTest extends TestCase
         $this->expectExceptionMessage('Order cannot move from "collected" to "cancelled"');
 
         $this->fulfilment->cancelOrder($order);
+    }
+
+    #[Test]
+    public function anOrderThatCannotBeCancelledLeavesItsSessionOpen(): void
+    {
+        $order         = $this->checkedOutOrder();
+        $order->status = OrderStatus::Refunded;
+
+        try {
+            $this->fulfilment->cancelOrder($order);
+            static::fail('Expected InvalidTransitionException');
+        } catch (InvalidTransitionException) {
+            static::assertSame([], $this->gateway->expirations);
+        }
     }
 
     #[Test]
@@ -94,6 +112,77 @@ final class FulfilmentServiceTest extends TestCase
     }
 
     #[Test]
+    public function aSessionPaidBeforeStaffCancelledIsRefundedWhenItCompletes(): void
+    {
+        $order = $this->checkedOutOrder();
+        $this->gateway->completeSession('cs_fake_1', 'pi_paid_first');
+
+        $this->fulfilment->cancelOrder($order);
+        $result = $this->completion->completeFromCheckoutSession('cs_fake_1');
+
+        static::assertSame(
+            [
+                ['cs_fake_1'],
+                CompletionOutcome::RefundedCancelled,
+                [[
+                    'paymentIntentId' => 'pi_paid_first',
+                    'amount'          => null,
+                    'idempotencyKey'  => 'contenir-commerce-cancelled-refund-pi_paid_first',
+                ]],
+                'cancelled',
+            ],
+            [
+                $this->gateway->expirations,
+                $result->outcome,
+                $this->gateway->refunds,
+                $this->orderRow(['status'])['status'],
+            ],
+        );
+    }
+
+    #[Test]
+    public function cancellingAPaidOrderLeavesItsCompleteSessionAlone(): void
+    {
+        $order = $this->paidOrder();
+
+        $this->fulfilment->cancelOrder($order);
+
+        static::assertSame([[], 'cancelled'], [$this->gateway->expirations, $this->orderRow(['status'])['status']]);
+    }
+
+    #[Test]
+    public function cancellingAPendingOrderBeforeCheckoutContactsNoProvider(): void
+    {
+        $order = $this->checkout->createPendingOrder($this->items(), CommerceFactory::customer());
+
+        $this->fulfilment->cancelOrder($order);
+
+        static::assertSame([[], 'cancelled'], [$this->gateway->expirations, $this->orderRow(['status'])['status']]);
+    }
+
+    #[Test]
+    public function cancellingAPendingOrderExpiresItsCheckoutSession(): void
+    {
+        $order = $this->checkedOutOrder();
+        $this->clock->moveTo('2026-08-20 10:05:00');
+
+        $this->fulfilment->cancelOrder($order);
+
+        static::assertSame(
+            [
+                ['cs_fake_1'],
+                CheckoutSession::STATUS_EXPIRED,
+                ['status' => 'cancelled', 'cancelled_at' => '2026-08-20 10:05:00', 'updated' => '2026-08-20 10:05:00'],
+            ],
+            [
+                $this->gateway->expirations,
+                $this->gateway->retrieveCheckoutSession('cs_fake_1')->status,
+                $this->orderRow(['status', 'cancelled_at', 'updated']),
+            ],
+        );
+    }
+
+    #[Test]
     public function thePickupLifecycleReachesCollected(): void
     {
         $order = $this->paidOrder();
@@ -111,6 +200,27 @@ final class FulfilmentServiceTest extends TestCase
             ],
             [$awaiting, $this->orderRow(['status', 'collected_at', 'updated'])],
         );
+    }
+
+    #[Test]
+    public function whenTheSessionCannotBeExpiredTheOrderStaysPending(): void
+    {
+        $order = $this->checkedOutOrder();
+        $this->gateway->failExpiries();
+
+        try {
+            $this->fulfilment->cancelOrder($order);
+            static::fail('Expected PaymentFailedException');
+        } catch (PaymentFailedException $e) {
+            static::assertSame(
+                [
+                    'Unable to expire Stripe checkout session',
+                    OrderStatus::Pending,
+                    ['status' => 'pending', 'cancelled_at' => null],
+                ],
+                [$e->getMessage(), $order->status, $this->orderRow(['status', 'cancelled_at'])],
+            );
+        }
     }
 
     #[Override]

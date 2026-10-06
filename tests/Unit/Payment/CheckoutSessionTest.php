@@ -14,18 +14,18 @@ use PHPUnit\Framework\TestCase;
 final class CheckoutSessionTest extends TestCase
 {
     /**
-     * @return array<string, array{string, ?string, bool, bool}>
+     * @return array<string, array{string, ?string, bool, bool, bool}>
      */
     public static function sessionProvider(): array
     {
         return [
-            'open'                          => ['open', 'unpaid', false, false],
-            'expired'                       => ['expired', 'unpaid', false, false],
-            'complete and paid'             => ['complete', 'paid', true, true],
-            'complete, funds still to come' => ['complete', 'unpaid', true, false],
-            'complete, nothing to pay'      => ['complete', 'no_payment_required', true, false],
-            'complete, status unknown'      => ['complete', null, true, false],
-            'paid but not complete'         => ['open', 'paid', false, false],
+            'open'                          => ['open', 'unpaid', true, false, false],
+            'expired'                       => ['expired', 'unpaid', false, false, false],
+            'complete and paid'             => ['complete', 'paid', false, true, true],
+            'complete, funds still to come' => ['complete', 'unpaid', false, true, false],
+            'complete, nothing to pay'      => ['complete', 'no_payment_required', false, true, false],
+            'complete, status unknown'      => ['complete', null, false, true, false],
+            'paid but not complete'         => ['open', 'paid', true, false, false],
         ];
     }
 
@@ -34,12 +34,16 @@ final class CheckoutSessionTest extends TestCase
     public function isPaidOnlyWhenCompleteAndThePaymentHasArrived(
         string $status,
         ?string $paymentStatus,
+        bool $open,
         bool $complete,
         bool $paid,
     ): void {
         $session = new CheckoutSession('cs_1', $status, paymentStatus: $paymentStatus);
 
-        static::assertSame([$complete, $paid], [$session->isComplete(), $session->isPaid()]);
+        static::assertSame(
+            [$open, $complete, $paid],
+            [$session->isOpen(), $session->isComplete(), $session->isPaid()],
+        );
     }
 
     #[Test]

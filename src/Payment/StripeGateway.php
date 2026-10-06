@@ -10,6 +10,7 @@ use Override;
 use Psr\Clock\ClockInterface;
 use Stripe\Checkout\Session;
 use Stripe\Exception\ExceptionInterface as StripeException;
+use Stripe\Exception\InvalidRequestException;
 use Stripe\StripeClient;
 
 use function is_string;
@@ -61,6 +62,32 @@ final readonly class StripeGateway implements PaymentGatewayInterface
             $session = $this->client->checkout->sessions->create($params);
         } catch (StripeException $e) {
             throw PaymentFailedException::fromProvider('create Stripe checkout session', $e);
+        }
+
+        return $this->toCheckoutSession($session);
+    }
+
+    /**
+     * Stripe refuses to expire a session that is not open with an invalid
+     * request error. The session is then retrieved: one that is complete or
+     * expired is returned as it is, and one still open (the refusal had
+     * another cause) fails.
+     *
+     * @throws PaymentFailedException
+     */
+    #[Override]
+    public function expireCheckoutSession(string $sessionId): CheckoutSession
+    {
+        try {
+            $session = $this->client->checkout->sessions->expire($sessionId);
+        } catch (InvalidRequestException $e) {
+            $current = $this->retrieveCheckoutSession($sessionId);
+
+            return $current->isOpen()
+                ? throw PaymentFailedException::fromProvider('expire Stripe checkout session', $e)
+                : $current;
+        } catch (StripeException $e) {
+            throw PaymentFailedException::fromProvider('expire Stripe checkout session', $e);
         }
 
         return $this->toCheckoutSession($session);
