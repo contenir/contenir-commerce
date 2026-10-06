@@ -37,6 +37,14 @@ final class ExceptionsTest extends TestCase
                 ConfigurationException::invalidService('svc', 'Foo', 42),
                 'Service "svc" must be a Foo, got int',
             ],
+            'invalid entity class'   => [
+                ConfigurationException::invalidEntityClass('contenir_commerce.order_entity', 'Foo', 'Bar'),
+                'Config "contenir_commerce.order_entity" must name an existing subclass of Bar, got "Foo"',
+            ],
+            'unknown repository'     => [
+                ConfigurationException::unknownRepository('Foo'),
+                'No repository "Foo" is built by this factory',
+            ],
             'invalid value'          => [
                 ConfigurationException::invalidValue('stripe.secret_key', 'a string', null),
                 'Config "stripe.secret_key" must be a string, got null',

@@ -11,9 +11,9 @@ use Contenir\Commerce\Exception\InvalidTransitionException;
 use Contenir\Commerce\Exception\OrderNotFoundException;
 use Contenir\Commerce\Exception\OverflowException;
 use Contenir\Commerce\Exception\PaymentFailedException;
-use Contenir\Commerce\Model\Entity\ArtworkEntity;
-use Contenir\Commerce\Model\Entity\OrderEntity;
-use Contenir\Commerce\Model\Entity\OrderItemEntity;
+use Contenir\Commerce\Model\Entity\AbstractArtworkEntity;
+use Contenir\Commerce\Model\Entity\AbstractOrderEntity;
+use Contenir\Commerce\Model\Entity\AbstractOrderItemEntity;
 use Contenir\Commerce\Model\Repository\ArtworkRepository;
 use Contenir\Commerce\Model\Repository\OrderItemRepository;
 use Contenir\Commerce\Model\Repository\OrderRepository;
@@ -81,7 +81,7 @@ final readonly class OrderManager
      * @throws InvalidArgumentException When a stored price is negative.
      * @throws DbModelException
      */
-    public function beginCheckout(OrderEntity $order, string $successUrl, string $cancelUrl): CheckoutSession
+    public function beginCheckout(AbstractOrderEntity $order, string $successUrl, string $cancelUrl): CheckoutSession
     {
         if (OrderStatus::Pending !== $order->status) {
             throw InvalidTransitionException::checkoutNotPending($order->status);
@@ -123,7 +123,7 @@ final readonly class OrderManager
      * @throws InvalidTransitionException When the order can no longer be cancelled.
      * @throws DbModelException
      */
-    public function cancelOrder(OrderEntity $order): void
+    public function cancelOrder(AbstractOrderEntity $order): void
     {
         $now                = $this->clock->now();
         $order->status      = $order->status->transitionTo(OrderStatus::Cancelled);
@@ -165,7 +165,7 @@ final readonly class OrderManager
      * @throws DbModelException
      * @throws Throwable Database errors, after rolling back.
      */
-    public function createPendingOrder(array $items, CustomerDetails $customer): OrderEntity
+    public function createPendingOrder(array $items, CustomerDetails $customer): AbstractOrderEntity
     {
         if ([] === $items) {
             throw new InvalidArgumentException('An order requires at least one item');
@@ -184,9 +184,9 @@ final readonly class OrderManager
              * @throws OrderNotFoundException
              * @throws DbModelException
              */
-            function () use ($items, $customer, $total): OrderEntity {
+            function () use ($items, $customer, $total): AbstractOrderEntity {
                 $now                  = $this->clock->now();
-                $order                = new OrderEntity();
+                $order                = $this->orders->newEntity();
                 $order->orderRef      = sprintf('%s-PENDING', self::REF_PREFIX);
                 $order->customerName  = $customer->name;
                 $order->customerEmail = $customer->email;
@@ -203,7 +203,7 @@ final readonly class OrderManager
                 $this->em->save($order);
 
                 foreach ($items as $item) {
-                    $line             = new OrderItemEntity();
+                    $line             = $this->orderItems->newEntity();
                     $line->orderId    = $order->getId();
                     $line->artworkId  = $item->artworkId;
                     $line->title      = $item->title;
@@ -225,7 +225,7 @@ final readonly class OrderManager
      *
      * @throws DbModelException
      */
-    public function expireCheckout(string $sessionId): ?OrderEntity
+    public function expireCheckout(string $sessionId): ?AbstractOrderEntity
     {
         $order = $this->orders->findOneByCheckoutSessionId($sessionId);
         if (null === $order || OrderStatus::Pending !== $order->status) {
@@ -241,7 +241,7 @@ final readonly class OrderManager
      * @throws InvalidTransitionException When the order is not paid.
      * @throws DbModelException
      */
-    public function markAwaitingPickup(OrderEntity $order): void
+    public function markAwaitingPickup(AbstractOrderEntity $order): void
     {
         $order->status  = $order->status->transitionTo(OrderStatus::AwaitingPickup);
         $order->updated = $this->clock->now();
@@ -252,7 +252,7 @@ final readonly class OrderManager
      * @throws InvalidTransitionException When the order is not awaiting pickup.
      * @throws DbModelException
      */
-    public function markCollected(OrderEntity $order): void
+    public function markCollected(AbstractOrderEntity $order): void
     {
         $now                = $this->clock->now();
         $order->status      = $order->status->transitionTo(OrderStatus::Collected);
@@ -271,10 +271,10 @@ final readonly class OrderManager
      * @throws InvalidArgumentException When a stored price is negative.
      * @throws DbModelException
      */
-    public function purchaseItemsFor(OrderEntity $order): array
+    public function purchaseItemsFor(AbstractOrderEntity $order): array
     {
         return array_map(
-            static fn(OrderItemEntity $line): PurchaseItem => new PurchaseItem(
+            static fn(AbstractOrderItemEntity $line): PurchaseItem => new PurchaseItem(
                 $line->artworkId ?? 0,
                 $line->title,
                 $line->getPrice(),
@@ -294,7 +294,7 @@ final readonly class OrderManager
      * @throws InvalidTransitionException When the order cannot be refunded.
      * @throws DbModelException
      */
-    public function refundOrder(OrderEntity $order, ?Money $amount = null): void
+    public function refundOrder(AbstractOrderEntity $order, ?Money $amount = null): void
     {
         $paymentIntentId = $order->stripePaymentIntentId ?? '';
         if ('' === $paymentIntentId) {
@@ -352,7 +352,7 @@ final readonly class OrderManager
      *
      * @param list<PurchaseItem> $items
      *
-     * @return array{available: list<ArtworkEntity>, lost: list<string>}
+     * @return array{available: list<AbstractArtworkEntity>, lost: list<string>}
      *
      * @throws DbModelException
      */
@@ -377,7 +377,7 @@ final readonly class OrderManager
      * @throws PaymentFailedException
      * @throws Throwable Database and payment errors, after rolling back.
      */
-    private function completePending(OrderEntity $order, string $sessionId): CompletionResult
+    private function completePending(AbstractOrderEntity $order, string $sessionId): CompletionResult
     {
         $session = $this->gateway->retrieveCheckoutSession($sessionId);
         if (! $session->isPaid()) {
@@ -422,7 +422,7 @@ final readonly class OrderManager
      *
      * @throws PaymentFailedException
      */
-    private function refundInFull(OrderEntity $order, string $reason): void
+    private function refundInFull(AbstractOrderEntity $order, string $reason): void
     {
         $paymentIntentId = $order->stripePaymentIntentId ?? '';
         if ('' === $paymentIntentId) {
@@ -444,7 +444,7 @@ final readonly class OrderManager
      * @throws PaymentFailedException
      * @throws DbModelException
      */
-    private function refundRace(OrderEntity $order, array $lost): CompletionResult
+    private function refundRace(AbstractOrderEntity $order, array $lost): CompletionResult
     {
         $this->refundInFull($order, 'race');
 
@@ -466,7 +466,7 @@ final readonly class OrderManager
      * @throws PaymentFailedException
      * @throws DbModelException
      */
-    private function settleCancelled(OrderEntity $order, string $sessionId): CompletionResult
+    private function settleCancelled(AbstractOrderEntity $order, string $sessionId): CompletionResult
     {
         if (null !== $order->refundedAt) {
             return new CompletionResult($order, CompletionOutcome::RefundedCancelled);

@@ -6,6 +6,7 @@ namespace Contenir\Commerce\Model\Repository;
 
 use Contenir\Commerce\Artwork\ArtworkStatus;
 use Contenir\Commerce\Artwork\ItemType;
+use Contenir\Commerce\Model\Entity\AbstractArtworkEntity;
 use Contenir\Commerce\Model\Entity\ArtworkEntity;
 use Contenir\Db\Model\EntityManager;
 use Contenir\Db\Model\Exception\ExceptionInterface as DbModelException;
@@ -15,25 +16,27 @@ use Contenir\Db\Model\Repository;
  * Finders for artworks, including the gallery listings keyed by the
  * artwork's resource id.
  *
- * @extends Repository<ArtworkEntity>
+ * @extends Repository<AbstractArtworkEntity>
  *
  * @api
  */
 final class ArtworkRepository extends Repository
 {
     /**
+     * @param class-string<AbstractArtworkEntity> $entityClass
+     *
      * @throws DbModelException When the entity mapping is invalid.
      */
-    public function __construct(EntityManager $em)
+    public function __construct(EntityManager $em, string $entityClass = ArtworkEntity::class)
     {
-        parent::__construct($em, ArtworkEntity::class);
+        parent::__construct($em, $entityClass);
     }
 
     /**
      * Ongoing works from selected artists: available originals that are not
      * part of any exhibition.
      *
-     * @return array<int, ArtworkEntity> keyed by resource id
+     * @return array<int, AbstractArtworkEntity> keyed by resource id
      *
      * @throws DbModelException
      */
@@ -47,7 +50,7 @@ final class ArtworkRepository extends Repository
     }
 
     /**
-     * @return array<int, ArtworkEntity> keyed by resource id
+     * @return array<int, AbstractArtworkEntity> keyed by resource id
      *
      * @throws DbModelException
      */
@@ -59,7 +62,7 @@ final class ArtworkRepository extends Repository
     /**
      * Every work in an exhibition, sold ones included (they keep a badge).
      *
-     * @return array<int, ArtworkEntity> keyed by resource id
+     * @return array<int, AbstractArtworkEntity> keyed by resource id
      *
      * @throws DbModelException
      */
@@ -71,7 +74,7 @@ final class ArtworkRepository extends Repository
     /**
      * @param list<int> $resourceIds
      *
-     * @return array<int, ArtworkEntity> keyed by resource id
+     * @return array<int, AbstractArtworkEntity> keyed by resource id
      *
      * @throws DbModelException
      */
@@ -91,7 +94,7 @@ final class ArtworkRepository extends Repository
      *
      * @throws DbModelException
      */
-    public function findCurrent(int $artworkId): ?ArtworkEntity
+    public function findCurrent(int $artworkId): ?AbstractArtworkEntity
     {
         $artwork = $this->find($artworkId);
         if (null !== $artwork) {
@@ -102,9 +105,17 @@ final class ArtworkRepository extends Repository
     }
 
     /**
+     * A new, unsaved entity of the class this repository hydrates.
+     */
+    public function newEntity(): AbstractArtworkEntity
+    {
+        return new $this->metadata->className();
+    }
+
+    /**
      * @param array<string, mixed> $criteria
      *
-     * @return array<int, ArtworkEntity> keyed by resource id
+     * @return array<int, AbstractArtworkEntity> keyed by resource id
      *
      * @throws DbModelException
      */

@@ -17,6 +17,16 @@ use function sprintf;
  */
 final class ConfigurationException extends SplInvalidArgumentException implements ExceptionInterface
 {
+    public static function invalidEntityClass(string $key, string $className, string $baseClass): self
+    {
+        return new self(sprintf(
+            'Config "%s" must name an existing subclass of %s, got "%s"',
+            $key,
+            $baseClass,
+            $className,
+        ));
+    }
+
     public static function invalidService(string $name, string $expected, mixed $service): self
     {
         return new self(sprintf('Service "%s" must be a %s, got %s', $name, $expected, get_debug_type($service)));
@@ -25,5 +35,10 @@ final class ConfigurationException extends SplInvalidArgumentException implement
     public static function invalidValue(string $key, string $expected, mixed $value): self
     {
         return new self(sprintf('Config "%s" must be %s, got %s', $key, $expected, get_debug_type($value)));
+    }
+
+    public static function unknownRepository(string $name): self
+    {
+        return new self(sprintf('No repository "%s" is built by this factory', $name));
     }
 }

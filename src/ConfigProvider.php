@@ -9,13 +9,13 @@ use Contenir\Commerce\Model\Repository\ArtistEnquiryFileRepository;
 use Contenir\Commerce\Model\Repository\ArtistEnquiryRepository;
 use Contenir\Commerce\Model\Repository\ArtworkRepository;
 use Contenir\Commerce\Model\Repository\EmailLogRepository;
+use Contenir\Commerce\Model\Repository\Factory\RepositoryFactory;
 use Contenir\Commerce\Model\Repository\OrderItemRepository;
 use Contenir\Commerce\Model\Repository\OrderRepository;
 use Contenir\Commerce\Order\Factory\OrderManagerFactory;
 use Contenir\Commerce\Order\OrderManager;
 use Contenir\Commerce\Payment\Factory\StripeGatewayFactory;
 use Contenir\Commerce\Payment\PaymentGatewayInterface;
-use Contenir\Db\Model\Container\RepositoryFactory;
 use Psr\Clock\ClockInterface;
 
 /**
