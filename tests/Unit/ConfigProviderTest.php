@@ -26,6 +26,7 @@ use Contenir\Commerce\Order\Factory\RefunderFactory;
 use Contenir\Commerce\Order\FulfilmentService;
 use Contenir\Commerce\Order\OrderManager;
 use Contenir\Commerce\Order\OrderStore;
+use Contenir\Commerce\Order\PurchaseItemCheck;
 use Contenir\Commerce\Order\Refunder;
 use Contenir\Commerce\Payment\Factory\StripeGatewayFactory;
 use Contenir\Commerce\Payment\PaymentGatewayInterface;
@@ -51,7 +52,10 @@ final class ConfigProviderTest extends TestCase
         static::assertSame(
             [
                 'aliases'    => [ClockInterface::class => SystemClock::class],
-                'invokables' => [SystemClock::class => SystemClock::class],
+                'invokables' => [
+                    SystemClock::class       => SystemClock::class,
+                    PurchaseItemCheck::class => PurchaseItemCheck::class,
+                ],
                 'factories'  => [
                     ArtworkRepository::class           => RepositoryFactory::class,
                     OrderRepository::class             => RepositoryFactory::class,

@@ -10,6 +10,7 @@ use Contenir\Commerce\Exception\InvalidTransitionException;
 use Contenir\Commerce\Exception\OrderNotFoundException;
 use Contenir\Commerce\Exception\OverflowException;
 use Contenir\Commerce\Exception\PaymentFailedException;
+use Contenir\Commerce\Exception\PurchaseItemMismatchException;
 use Contenir\Commerce\Model\Entity\AbstractOrderEntity;
 use Contenir\Commerce\Money\Money;
 use Contenir\Commerce\Payment\CheckoutLineItem;
@@ -35,6 +36,7 @@ final readonly class CheckoutService
     public function __construct(
         private OrderStore $store,
         private ArtworkReservation $reservation,
+        private PurchaseItemCheck $itemCheck,
         private PaymentGatewayInterface $gateway,
     ) {}
 
@@ -89,12 +91,15 @@ final readonly class CheckoutService
     }
 
     /**
-     * Creates a pending order with a snapshot of each item. The order and its
-     * lines are written in one transaction.
+     * Creates a pending order with a snapshot of each item. Each item's
+     * price, and its title when the artwork maps one, must match the
+     * artwork as stored: the order never trusts the caller's prices. The
+     * order and its lines are written in one transaction.
      *
      * @param list<PurchaseItem> $items
      *
      * @throws ArtworkUnavailableException When a work has been sold since it was carted.
+     * @throws PurchaseItemMismatchException When an item's price or title differs from its artwork's.
      * @throws InvalidArgumentException When there are no items or a work appears twice.
      * @throws OverflowException When the total exceeds the integer range of cents.
      * @throws DbModelException
@@ -106,8 +111,8 @@ final readonly class CheckoutService
             throw new InvalidArgumentException('An order requires at least one item');
         }
 
-        $this->reservation->assertDistinct($items);
-        $this->reservation->assertAvailable($items);
+        $this->itemCheck->assertDistinct($items);
+        $this->itemCheck->assertListed($this->reservation->available($items));
 
         $total = Money::zero();
         foreach ($items as $item) {

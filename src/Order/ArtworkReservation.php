@@ -5,18 +5,14 @@ declare(strict_types=1);
 namespace Contenir\Commerce\Order;
 
 use Contenir\Commerce\Exception\ArtworkUnavailableException;
-use Contenir\Commerce\Exception\InvalidArgumentException;
+use Contenir\Commerce\Model\Entity\AbstractArtworkEntity;
 use Contenir\Commerce\Model\Repository\ArtworkRepository;
 use Contenir\Db\Model\Exception\ExceptionInterface as DbModelException;
 use DateTimeImmutable;
 
-use function in_array;
-use function sprintf;
-
 /**
  * Availability of the works in an order, always read from the database,
- * and the claim that sells them: each original can be sold once, so a work
- * may appear in an order once.
+ * and the claim that sells each original once.
  *
  * @internal
  */
@@ -34,35 +30,35 @@ final readonly class ArtworkReservation
      */
     public function assertAvailable(array $items): void
     {
-        $lost = [];
-        foreach ($items as $item) {
-            if (true === $this->artworks->findCurrent($item->artworkId)?->isAvailable()) {
-                continue;
-            }
-
-            $lost[] = $item->title;
-        }
-
-        if ([] !== $lost) {
-            throw ArtworkUnavailableException::forTitles($lost);
-        }
+        $this->available($items);
     }
 
     /**
+     * Each item with its artwork as currently stored, when every work is
+     * still available.
+     *
      * @param list<PurchaseItem> $items
      *
-     * @throws InvalidArgumentException When a work appears more than once.
+     * @return list<array{PurchaseItem, AbstractArtworkEntity}>
+     *
+     * @throws ArtworkUnavailableException When a work has been sold, withdrawn or deleted.
+     * @throws DbModelException
      */
-    public function assertDistinct(array $items): void
+    public function available(array $items): array
     {
-        $seen = [];
+        $listed = [];
+        $lost   = [];
         foreach ($items as $item) {
-            if (in_array($item->artworkId, $seen, strict: true)) {
-                throw new InvalidArgumentException(sprintf('"%s" appears in the order more than once', $item->title));
+            $artwork = $this->artworks->findCurrent($item->artworkId);
+            if (null === $artwork || ! $artwork->isAvailable()) {
+                $lost[] = $item->title;
+                continue;
             }
 
-            $seen[] = $item->artworkId;
+            $listed[] = [$item, $artwork];
         }
+
+        return [] === $lost ? $listed : throw ArtworkUnavailableException::forTitles($lost);
     }
 
     /**

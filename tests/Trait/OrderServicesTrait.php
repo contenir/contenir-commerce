@@ -16,6 +16,7 @@ use Contenir\Commerce\Order\CustomerDetails;
 use Contenir\Commerce\Order\FulfilmentService;
 use Contenir\Commerce\Order\OrderStore;
 use Contenir\Commerce\Order\PurchaseItem;
+use Contenir\Commerce\Order\PurchaseItemCheck;
 use Contenir\Commerce\Order\Refunder;
 use Contenir\Commerce\Tests\TestAsset\Clock\MovableClock;
 use Contenir\Commerce\Tests\TestAsset\Factory\CommerceFactory;
@@ -69,6 +70,16 @@ trait OrderServicesTrait
         $this->checkout->beginCheckout($order, 'https://example.test/thanks', 'https://example.test/cart');
 
         return $order;
+    }
+
+    private function checkoutWith(ArtworkRepository $artworks): CheckoutService
+    {
+        return new CheckoutService(
+            $this->store(),
+            new ArtworkReservation($artworks),
+            new PurchaseItemCheck(),
+            $this->gateway,
+        );
     }
 
     private function completionWith(FakePaymentGateway $gateway): CompletionService
@@ -154,14 +165,10 @@ trait OrderServicesTrait
     private function setUpOrderServices(): void
     {
         $this->setUpDatabase();
-        $this->clock    = new MovableClock('2026-08-20 10:00:00');
-        $this->gateway  = new FakePaymentGateway();
-        $this->artworks = new ArtworkRepository($this->em, $this->adapter, TypeRegistry::withDefaults());
-        $this->checkout = new CheckoutService(
-            $this->store(),
-            new ArtworkReservation($this->artworks),
-            $this->gateway,
-        );
+        $this->clock      = new MovableClock('2026-08-20 10:00:00');
+        $this->gateway    = new FakePaymentGateway();
+        $this->artworks   = new ArtworkRepository($this->em, $this->adapter, TypeRegistry::withDefaults());
+        $this->checkout   = $this->checkoutWith($this->artworks);
         $this->completion = $this->completionWith($this->gateway);
         $this->fulfilment = $this->fulfilmentWith($this->gateway);
 

@@ -12,7 +12,10 @@ use Contenir\Commerce\Exception\InvalidTransitionException;
 use Contenir\Commerce\Exception\OrderNotFoundException;
 use Contenir\Commerce\Exception\OverflowException;
 use Contenir\Commerce\Exception\PaymentFailedException;
+use Contenir\Commerce\Exception\PurchaseItemMismatchException;
+use Contenir\Commerce\Money\Money;
 use Contenir\Commerce\Order\OrderStatus;
+use Contenir\Commerce\Order\PurchaseItem;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
@@ -85,11 +88,43 @@ final class ExceptionsTest extends TestCase
                 PaymentFailedException::notConfigured(),
                 'Stripe is not configured: set stripe.secret_key in local configuration',
             ],
+            'mispriced item'         => [
+                PurchaseItemMismatchException::forPrice(
+                    new PurchaseItem(7, 'Rip Tide', Money::fromCents(1_000)),
+                    Money::fromCents(185_000),
+                ),
+                '"Rip Tide" (artwork 7) is priced $1,850.00, not $10.00',
+            ],
+            'mistitled item'         => [
+                PurchaseItemMismatchException::forTitle(
+                    new PurchaseItem(7, 'Rip-tide', Money::fromCents(1_000)),
+                    'Rip Tide',
+                ),
+                'Artwork 7 is titled "Rip Tide", not "Rip-tide"',
+            ],
             'invalid argument'       => [
                 new InvalidArgumentException('bad'),
                 'bad',
             ],
         ];
+    }
+
+    #[Test]
+    public function aMismatchedItemExceptionNamesTheArtwork(): void
+    {
+        static::assertSame(
+            [7, 7],
+            [
+                PurchaseItemMismatchException::forPrice(
+                    new PurchaseItem(7, 'Rip Tide', Money::fromCents(1_000)),
+                    Money::fromCents(2_000),
+                )->getArtworkId(),
+                PurchaseItemMismatchException::forTitle(
+                    new PurchaseItem(7, 'Rip Tide', Money::fromCents(1_000)),
+                    'Rip-tide',
+                )->getArtworkId(),
+            ],
+        );
     }
 
     #[Test]

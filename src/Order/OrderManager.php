@@ -10,6 +10,7 @@ use Contenir\Commerce\Exception\InvalidTransitionException;
 use Contenir\Commerce\Exception\OrderNotFoundException;
 use Contenir\Commerce\Exception\OverflowException;
 use Contenir\Commerce\Exception\PaymentFailedException;
+use Contenir\Commerce\Exception\PurchaseItemMismatchException;
 use Contenir\Commerce\Model\Entity\AbstractOrderEntity;
 use Contenir\Commerce\Money\Money;
 use Contenir\Commerce\Payment\CheckoutSession;
@@ -81,6 +82,7 @@ final readonly class OrderManager
      * @param list<PurchaseItem> $items
      *
      * @throws ArtworkUnavailableException When a work has been sold since it was carted.
+     * @throws PurchaseItemMismatchException When an item's price or title differs from its artwork's.
      * @throws InvalidArgumentException When there are no items or a work appears twice.
      * @throws OverflowException When the total exceeds the integer range of cents.
      * @throws DbModelException

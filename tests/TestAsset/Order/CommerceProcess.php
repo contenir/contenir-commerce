@@ -11,6 +11,7 @@ use Contenir\Commerce\Order\ArtworkReservation;
 use Contenir\Commerce\Order\CheckoutService;
 use Contenir\Commerce\Order\CompletionService;
 use Contenir\Commerce\Order\OrderStore;
+use Contenir\Commerce\Order\PurchaseItemCheck;
 use Contenir\Commerce\Order\Refunder;
 use Contenir\Commerce\Payment\PaymentGatewayInterface;
 use Contenir\Db\Model\EntityManager;
@@ -45,7 +46,7 @@ final readonly class CommerceProcess
         $this->artworks   = new ArtworkRepository($em, $adapter, TypeRegistry::withDefaults());
         $store            = new OrderStore($em, new OrderRepository($em), new OrderItemRepository($em), $clock);
         $reservation      = new ArtworkReservation($this->artworks);
-        $this->checkout   = new CheckoutService($store, $reservation, $gateway);
+        $this->checkout   = new CheckoutService($store, $reservation, new PurchaseItemCheck(), $gateway);
         $this->completion = new CompletionService($store, $reservation, new Refunder($gateway), $gateway);
     }
 }

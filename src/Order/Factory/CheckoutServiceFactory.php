@@ -9,6 +9,7 @@ use Contenir\Commerce\Exception\ConfigurationException;
 use Contenir\Commerce\Order\ArtworkReservation;
 use Contenir\Commerce\Order\CheckoutService;
 use Contenir\Commerce\Order\OrderStore;
+use Contenir\Commerce\Order\PurchaseItemCheck;
 use Contenir\Commerce\Payment\PaymentGatewayInterface;
 use Psr\Container\ContainerExceptionInterface;
 use Psr\Container\ContainerInterface;
@@ -29,6 +30,7 @@ final class CheckoutServiceFactory
         return new CheckoutService(
             ServiceLocator::get($container, OrderStore::class),
             ServiceLocator::get($container, ArtworkReservation::class),
+            ServiceLocator::get($container, PurchaseItemCheck::class),
             ServiceLocator::get($container, PaymentGatewayInterface::class),
         );
     }
