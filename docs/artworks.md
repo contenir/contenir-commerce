@@ -2,6 +2,8 @@
 
 `Model\Entity\ArtworkEntity` maps the `artwork` table: original artworks and retail products (tote bags, cards)
 share it. The resource ids link a row to the Contenir resource pages for the work, its artist and its exhibition.
+The columns and behaviour live in `AbstractArtworkEntity`; a site with columns of its own extends it (see
+[entities](entities.md)).
 
 | Property | Column | Type |
 | --- | --- | --- |
@@ -10,14 +12,16 @@ share it. The resource ids link a row to the Contenir resource pages for the wor
 | `artistResourceId` | `artist_resource_id` | `?int` |
 | `exhibitionResourceId` | `exhibition_resource_id` | `?int` |
 | `itemType` | `item_type` | `ItemType` (`artwork`, `retail`), default `artwork` |
-| `price` | `price` | `int` cents, GST-inclusive |
+| `price` | `price` | `int` cents, tax-inclusive |
 | `status` | `status` | `ArtworkStatus` (`available`, `sold`), default `available` |
 | `medium`, `dimensions`, `year` | same | `?string` |
 | `editionDetails` | `edition_details` | `?string` |
 | `externalSaleUrl` | `external_sale_url` | `?string` |
 | `created`, `updated` | same | `?DateTimeImmutable` |
 
-`isAvailable()` is true while the status is `available`; `getPrice()` returns the price as `Money`. Sold works stay
+`isAvailable()` is true while the status is `available`; `getPrice()` returns the price as `Money`. `getTitle()`
+returns null: the title lives on the resource page. A site entity that maps a title column overrides it, and new
+orders then check item titles against it. Sold works stay
 visible (with a badge): `ArtworkStatus` is a display state as much as a stock state. `label()` on both enums gives
 the display text.
 
@@ -32,10 +36,14 @@ $artworks->findByExhibitionResourceId(51);    // keyed by resource id, sold work
 $artworks->findByArtistResourceId(11);        // keyed by resource id
 $artworks->findAvailableOngoing();            // available originals in no exhibition, keyed by resource id
 $artworks->findCurrent(12);                   // re-read from the database even if already loaded
+$artworks->claim(12, $clock->now());          // sell it if still available: true for the one caller that wins
+$artworks->newEntity();                       // a new artwork of the configured class
 $artworks->findBy(['status' => ArtworkStatus::Available], ['price' => 'DESC']);
 ```
 
-The keyed finders leave out rows with no resource id. Criteria and ordering use property names; enum cases or their
+The keyed finders leave out rows with no resource id. `claim()` is the atomic sale completion uses: one conditional
+`UPDATE ... WHERE artwork_id = ? AND status = 'available'`, true when it changed the row. Run it inside the
+`EntityManager`'s transaction; it does not update an entity already loaded (`findCurrent()` re-reads it). Criteria and ordering use property names; enum cases or their
 values both work. Save changes with the `EntityManager`:
 
 ```php

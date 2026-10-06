@@ -3,6 +3,8 @@
 ## Enquiries
 
 `Model\Entity\ArtistEnquiryEntity` maps `artist_enquiry`: a prospective artist's submission, reviewed by staff.
+Like every entity, its columns live in an abstract base (`AbstractArtistEnquiryEntity`) that a site can extend with
+columns of its own; see [entities](entities.md).
 
 | Property | Column | Type |
 | --- | --- | --- |
@@ -20,13 +22,13 @@
 move an enquiry between any two states; there is no lifecycle to enforce.
 
 ```php
-$enquiry        = new ArtistEnquiryEntity();
+$enquiry        = $enquiries->newEntity();   // ArtistEnquiryRepository: the configured class
 $enquiry->name  = 'June Hollis';
 $enquiry->email = 'june@example.test';
 $enquiry->created = $clock->now();
 $em->save($enquiry);
 
-$file                  = new ArtistEnquiryFileEntity();
+$file                  = $enquiryFiles->newEntity();
 $file->artistEnquiryId = $enquiry->artistEnquiryId;
 $file->filename        = 'folio.jpg';
 $file->path            = '/uploads/enquiry/folio.jpg';

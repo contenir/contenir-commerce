@@ -5,7 +5,105 @@ and the `v0.*` tags under the old name, `contenir/commerce`.
 
 The database tables and columns are unchanged: no migration is needed.
 
-## Requirements
+## From 2.0.0-RC1 to 2.0.0-RC2
+
+Sites that get `OrderManager`, the repositories and the gateway from the container need no code change: the
+defaults reproduce RC1 (reference prefix `LR`, AUD, 10% GST, the same entities and tables). The changes below matter
+if you construct these classes yourself, implement `PaymentGatewayInterface`, or rely on the exact types.
+
+### Custom payment gateways
+
+`PaymentGatewayInterface` has a fourth method. Add it to every implementation of your own, including test doubles:
+
+```php
+public function expireCheckoutSession(string $sessionId): CheckoutSession
+{
+    // Expire the session at the provider so it can no longer be paid, and return it.
+    // A session that is already complete or expired: return it as it is, without an error.
+    // Anything else that fails: throw PaymentFailedException.
+}
+```
+
+`FulfilmentService::cancelOrder()` (and `OrderManager::cancelOrder()`) calls it for a pending order whose checkout has
+begun. A gateway that cannot expire sessions may return the session from `retrieveCheckoutSession()`: the order is
+still cancelled, and a payment through it is refunded when it completes.
+
+### Order services
+
+`OrderManager` keeps every public method and now delegates to `CheckoutService`, `CompletionService` and
+`FulfilmentService`. If you construct it yourself:
+
+```php
+// RC1
+new OrderManager($em, $orders, $orderItems, $artworks, $gateway, $clock);
+
+// RC2: take the services from the container ...
+$container->get(OrderManager::class);
+$container->get(CompletionService::class); // or inject just the part you need
+
+// ... or build them; OrderStore, ArtworkReservation, PurchaseItemCheck and Refunder are internal helpers.
+$store       = new OrderStore($em, $orders, $orderItems, $clock);
+$reservation = new ArtworkReservation($artworks);
+$refunder    = new Refunder($gateway);
+new OrderManager(
+    new CheckoutService($store, $reservation, new PurchaseItemCheck(), $gateway, new CommerceSettings()),
+    new CompletionService($store, $reservation, $refunder, $gateway),
+    new FulfilmentService($store, $refunder, $gateway),
+);
+```
+
+### Repositories
+
+The repositories are built by `Contenir\Commerce\Model\Repository\Factory\RepositoryFactory`. If you registered
+them yourself with contenir-db-model's `Container\RepositoryFactory`, switch to the package's factory (or use the
+`ConfigProvider`/`Module` registrations): `ArtworkRepository` now needs the database adapter for its atomic claim.
+
+```php
+// RC1
+new ArtworkRepository($em);
+
+// RC2: the adapter the EntityManager runs on, and its TypeRegistry
+new ArtworkRepository($em, $adapter, $container->get(TypeRegistry::class));
+```
+
+Each repository takes the entity class as an optional last argument, and its finders are typed against the abstract
+base (`?AbstractOrderEntity`, `list<AbstractArtworkEntity>`, ...). So are `CompletionResult::$order` and the
+`OrderManager` methods. The objects are still the default `OrderEntity`, `ArtworkEntity`, ... unless you configure
+your own, so only static analysis notices; widen your own type declarations to the abstract bases.
+
+### Orders
+
+- `createPendingOrder()` compares each `PurchaseItem`'s price with the artwork's stored price and throws
+  `PurchaseItemMismatchException` when they differ. Build items from the artwork row (as the README always advised);
+  a cart that holds prices across a price change must be rebuilt. Catch the exception to tell the buyer the price
+  has changed.
+- `cancelOrder()` on a pending order whose checkout has begun calls Stripe to expire the session, and can now throw
+  `PaymentFailedException` (the order then stays pending; try again).
+- Two payments for one work completing at once: the second is now always refunded (`RefundedRace`), where RC1 could
+  sell the work twice.
+
+### Money
+
+`gstComponent()` is unchanged without an argument. Pass a `TaxRate` for another rate:
+`$total->gstComponent(TaxRate::fromPercent(15))`, or the configured `CommerceSettings::$taxRate`.
+
+### Configuration
+
+New, all optional, under `contenir_commerce`:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `order_reference_prefix` | `LR` | Order references read `<prefix>-<year>-<id, 4 digits>` |
+| `currency` | `AUD` | The ISO 4217 code Stripe charges in (sent in lower case) |
+| `tax_rate` | `10` | The percentage of tax included in prices, 0 to 100 |
+| `tax_label` | `GST` | The tax's display name, for templates (`CommerceSettings::$taxLabel`) |
+| `artwork_entity`, `order_entity`, `order_item_entity`, `artist_enquiry_entity`, `artist_enquiry_file_entity`, `email_log_entity` | the shipped entities | The class each repository hydrates; must extend the matching `Abstract*Entity` |
+
+See [docs/configuration.md](docs/configuration.md) and [docs/entities.md](docs/entities.md).
+
+## From 0.2 to 2.0
+
+### Requirements
 
 | | 0.2 | 2.0 |
 | --- | --- | --- |
@@ -15,7 +113,7 @@ The database tables and columns are unchanged: no migration is needed.
 | stripe/stripe-php | ^17.0 | ^22.0 |
 | psr/clock, psr/container | ^1.0, ^1.1 \|\| ^2.0 | unchanged |
 
-## Checklist
+### Checklist
 
 1. Change the requirement:
 
@@ -35,15 +133,16 @@ The database tables and columns are unchanged: no migration is needed.
    `$repository->save($entity)` with `$entityManager->save($entity)`.
 4. Replace `find($where)`/`findOne($where)` with `findBy()`/`findOneBy()` keyed by property name, or the typed
    finders.
-5. If you construct `OrderManager` yourself, pass the `EntityManager` first. If you implement
-   `PaymentGatewayInterface`, add the `$idempotencyKey` parameter to `refund()`.
+5. If you construct `OrderManager` yourself, build it from the three order services (see "Order services" above).
+   If you implement `PaymentGatewayInterface`, add the `$idempotencyKey` parameter to `refund()` and the
+   `expireCheckoutSession()` method.
 6. Handle `checkout.session.async_payment_succeeded` like `checkout.session.completed`, and
    `checkout.session.async_payment_failed` like `checkout.session.expired` (see Behaviour changes).
 7. Give each checkout attempt its own pending order (`createPendingOrder()` then `beginCheckout()`); do not call
    `beginCheckout()` twice for one order.
 8. Check any `match` over `CompletionOutcome` for the new `RefundedCancelled` case.
 
-## Classes
+### Classes
 
 Every concrete class is `final` in 2.0 (entities and repositories were open in 0.2).
 
@@ -57,25 +156,26 @@ Every concrete class is `final` in 2.0 (entities and repositories were open in 0
 | `Exception\InvalidTransitionException` | Adds `checkoutAlreadyStarted()` and `checkoutNotPending()`. Implements `ExceptionInterface` |
 | `Exception\PaymentFailedException` | Adds `fromProvider()`, `nothingToRefund()` and `notConfigured()`. Implements `ExceptionInterface` |
 | (none) | `Exception\ExceptionInterface`, `InvalidArgumentException`, `OverflowException`, `OrderNotFoundException`, `ConfigurationException` |
-| `Model\Entity\*Entity` (extend `AbstractEntity`) | Plain final classes mapped with `#[Table]`, `#[Id]`, `#[Column]`, `#[HasMany]` |
-| `Model\Repository\*Repository` (extend `AbstractRepository`) | Final, extend `Contenir\Db\Model\Repository`, constructor `(EntityManager $em)` |
-| `Money\Money` | `final readonly`; adds `zero()`; integer GST; `OverflowException` on overflow |
+| `Model\Entity\*Entity` (extend `AbstractEntity`) | Final default classes carrying `#[Table]`, extending `Model\Entity\Abstract*Entity`, which map the columns with `#[Id]`, `#[Column]`, `#[HasMany]` |
+| `Model\Repository\*Repository` (extend `AbstractRepository`) | Final, extend `Contenir\Db\Model\Repository`, constructor `(EntityManager $em, string $entityClass = <default>)`; `ArtworkRepository` `(EntityManager, AdapterInterface, TypeRegistry, string $entityClass = ArtworkEntity::class)` |
+| `Money\Money` | `final readonly`; adds `zero()`; integer GST, `gstComponent(?TaxRate)`; `OverflowException` on overflow |
 | `Order\CompletionOutcome` | Adds `RefundedCancelled` |
 | `Order\CompletionResult`, `Order\CustomerDetails`, `Order\PurchaseItem` | `readonly` classes; same constructors |
-| `Order\Factory\OrderManagerFactory` | Also resolves the `EntityManager` |
-| `Order\OrderManager` | Constructor `(EntityManager, OrderRepository, OrderItemRepository, ArtworkRepository, PaymentGatewayInterface, ClockInterface)` (0.2 had no `EntityManager`) |
+| `Order\Factory\OrderManagerFactory` | Builds the façade from the three order services |
+| `Order\OrderManager` | A façade with the same methods; constructor `(CheckoutService, CompletionService, FulfilmentService)` |
 | `Order\OrderStatus` | Unchanged |
 | `Payment\CheckoutLineItem` | `readonly`; same constructor |
 | `Payment\CheckoutRequest` | `readonly`; adds `MIN_EXPIRY_MINUTES`/`MAX_EXPIRY_MINUTES`; rejects over 1,440 minutes |
 | `Payment\CheckoutSession` | `readonly`; adds a sixth constructor argument `?string $paymentStatus`, `isPaid()` and the `STATUS_COMPLETE`/`PAYMENT_STATUS_PAID` constants |
 | `Payment\Factory\StripeGatewayFactory` | Takes the clock from `ClockInterface` in the container; rejects a mistyped `stripe` config |
-| `Payment\PaymentGatewayInterface` | `refund(string $paymentIntentId, ?Money $amount = null, ?string $idempotencyKey = null)` |
+| `Payment\PaymentGatewayInterface` | `refund(string $paymentIntentId, ?Money $amount = null, ?string $idempotencyKey = null)`; adds `expireCheckoutSession(string $sessionId): CheckoutSession` |
 | `Payment\RefundResult` | `readonly` |
-| `Payment\StripeGateway` | `readonly`; wraps every stripe-php exception; sends idempotency keys |
-| `Payment\UnconfiguredGateway` | New `refund()` signature |
-| (none) | `Container\ServiceLocator` (`@internal`) |
+| `Payment\StripeGateway` | `readonly`; wraps every stripe-php exception; sends idempotency keys; optional third constructor argument, the currency |
+| `Payment\UnconfiguredGateway` | New `refund()` signature; adds `expireCheckoutSession()` |
+| (none) | `Order\CheckoutService`, `Order\CompletionService`, `Order\FulfilmentService` and their factories; `Config\CommerceSettings` and its factory; `Money\TaxRate`; `Model\Repository\Factory\RepositoryFactory`; `Exception\PurchaseItemMismatchException` |
+| (none) | `Container\ServiceLocator`, `Config\ConfigReader`, `Order\OrderStore`, `Order\ArtworkReservation`, `Order\PurchaseItemCheck`, `Order\Refunder` (`@internal`) |
 
-### Exceptions
+#### Exceptions
 
 | Thrown when | 0.2 | 2.0 |
 | --- | --- | --- |
@@ -87,18 +187,19 @@ Every concrete class is `final` in 2.0 (entities and repositories were open in 0
 
 Existing `catch (\InvalidArgumentException)` and `catch (\RuntimeException)` blocks keep working.
 
-## Configuration
+### Configuration
 
 | 0.2 | 2.0 |
 | --- | --- |
 | `stripe.secret_key` | Unchanged. Must be a string; a non-array `stripe` or a non-string key throws `ConfigurationException` |
 | `service_manager` from `ConfigProvider` | `dependencies` from `ConfigProvider`; `service_manager` from `Module` |
 | `service_manager.factories` for the six entities (`InvokableFactory`) | Removed: entities are not services |
-| `service_manager.factories` for the repositories (`Contenir\Db\Model\Repository\Factory\RepositoryFactory`) | `Contenir\Db\Model\Container\RepositoryFactory` |
+| `service_manager.factories` for the repositories (`Contenir\Db\Model\Repository\Factory\RepositoryFactory`) | `Contenir\Commerce\Model\Repository\Factory\RepositoryFactory` |
+| (none) | `contenir_commerce`: the reference prefix, currency, tax and entity classes (see above) |
 | `ClockInterface` alias to `SystemClock` (`InvokableFactory`) | Same alias; `SystemClock` is an invokable |
 | `model.adapter` (contenir-db-model 1) | `contenir_db_model.adapter` (contenir-db-model 2) |
 
-## Repository methods
+### Repository methods
 
 Every repository:
 
@@ -130,24 +231,25 @@ Criteria and ordering use **property** names: `['artwork_id' => 1]` becomes `['a
 | `EmailLogRepository` | `find(['order_id' => $id])` | `findByOrderId($id)`, newest first |
 | | `find(['artist_enquiry_id' => $id])` | `findByArtistEnquiryId($id)`, newest first |
 
-## OrderManager methods
+### OrderManager methods
 
 | 0.2 | 2.0 |
 | --- | --- |
-| `createPendingOrder(list<PurchaseItem>, CustomerDetails)` | Same; one transaction; rejects a work listed twice |
+| `createPendingOrder(list<PurchaseItem>, CustomerDetails)` | Same; one transaction; rejects a work listed twice and an item whose price differs from the artwork's |
 | `beginCheckout(OrderEntity, string, string)` | Same; refuses an order that is not pending or already has a session; re-checks availability |
 | `completeFromCheckoutSession(string)` | Same; fulfils only paid sessions; refunds payments for cancelled orders |
 | `expireCheckout(string)` | Unchanged |
-| `markAwaitingPickup(OrderEntity)`, `markCollected(OrderEntity)`, `cancelOrder(OrderEntity)` | Unchanged |
+| `markAwaitingPickup(OrderEntity)`, `markCollected(OrderEntity)` | Unchanged |
+| `cancelOrder(OrderEntity)` | Same; expires the checkout session of a pending order first |
 | `refundOrder(OrderEntity, ?Money)` | Unchanged; the no-payment error is `PaymentFailedException` |
 | `purchaseItemsFor(OrderEntity)` | Unchanged |
 
-## Entities
+### Entities
 
 Properties are typed, camelCase and mapped to the same snake_case columns. Unlisted columns keep their name
 (`price` → `$price`). `created`, `updated` and every `*_at` column are `?DateTimeImmutable` (0.2: `?string`).
 
-### `ArtworkEntity` (`artwork`)
+#### `ArtworkEntity` (`artwork`)
 
 | 0.2 | 2.0 |
 | --- | --- |
@@ -159,7 +261,7 @@ Properties are typed, camelCase and mapped to the same snake_case columns. Unlis
 | `medium`, `dimensions`, `year` | same names (`?string`) |
 | `edition_details`, `external_sale_url` | `editionDetails`, `externalSaleUrl` |
 
-### `OrderEntity` (`gallery_order`)
+#### `OrderEntity` (`gallery_order`)
 
 | 0.2 | 2.0 |
 | --- | --- |
@@ -173,7 +275,7 @@ Properties are typed, camelCase and mapped to the same snake_case columns. Unlis
 | `paid_at`, `collected_at`, `refunded_at`, `cancelled_at` | `paidAt`, `collectedAt`, `refundedAt`, `cancelledAt` |
 | `items` (array) | `items` (`Collection<OrderItemEntity>`, ordered by id) |
 
-### `OrderItemEntity` (`gallery_order_item`)
+#### `OrderItemEntity` (`gallery_order_item`)
 
 | 0.2 | 2.0 |
 | --- | --- |
@@ -181,7 +283,7 @@ Properties are typed, camelCase and mapped to the same snake_case columns. Unlis
 | `title`, `price` | same names; also `getPrice(): Money` |
 | `artist_name` | `artistName` |
 
-### `ArtistEnquiryEntity` (`artist_enquiry`)
+#### `ArtistEnquiryEntity` (`artist_enquiry`)
 
 | 0.2 | 2.0 |
 | --- | --- |
@@ -191,7 +293,7 @@ Properties are typed, camelCase and mapped to the same snake_case columns. Unlis
 | `status` (`string`) | `status` (`EnquiryStatus`) |
 | `files` (array) | `files` (`Collection<ArtistEnquiryFileEntity>`, in upload order) |
 
-### `ArtistEnquiryFileEntity` (`artist_enquiry_file`)
+#### `ArtistEnquiryFileEntity` (`artist_enquiry_file`)
 
 | 0.2 | 2.0 |
 | --- | --- |
@@ -199,7 +301,7 @@ Properties are typed, camelCase and mapped to the same snake_case columns. Unlis
 | `filename`, `path`, `size` | same names |
 | `mime_type` | `mimeType` |
 
-### `EmailLogEntity` (`email_log`)
+#### `EmailLogEntity` (`email_log`)
 
 | 0.2 | 2.0 |
 | --- | --- |
@@ -207,7 +309,7 @@ Properties are typed, camelCase and mapped to the same snake_case columns. Unlis
 | `recipient`, `subject`, `status`, `error` | same names |
 | `message_class` | `messageClass` |
 
-### Before and after
+#### Before and after
 
 ```php
 // 0.2
@@ -233,7 +335,7 @@ $this->entityManager->save($log);
 if ($order->status === OrderStatus::Paid) { /* ... */ }
 ```
 
-## Behaviour changes
+### Behaviour changes
 
 - **Delayed payments.** 0.2 fulfilled a session as soon as it was `complete`. 2.0 waits for Stripe's
   `payment_status` to be `paid`: a BECS Direct Debit payment reports `NotPaid` on `checkout.session.completed` and
@@ -245,6 +347,10 @@ if ($order->status === OrderStatus::Paid) { /* ... */ }
   `NotPaid`.
 - **Transactions.** Creating an order and completing one each write in a single transaction.
 - **Duplicate works.** An order listing the same artwork twice is rejected.
+- **Server-side prices.** An item whose price differs from its artwork's is rejected
+  (`PurchaseItemMismatchException`).
+- **Concurrent payments.** Each work is claimed with a conditional update at completion, so two payments for one
+  work completing at once sell it once and refund the other.
 - **Identity map.** contenir-db-model 2 returns one object per row per `EntityManager`. Availability checks use
   `ArtworkRepository::findCurrent()`, which re-reads the row; in long-running workers, `clear()` the manager between
   jobs as contenir-db-model recommends.

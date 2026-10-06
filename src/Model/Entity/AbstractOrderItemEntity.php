@@ -42,7 +42,7 @@ abstract class AbstractOrderItemEntity
     public ?string $artistName = null;
 
     /**
-     * GST-inclusive price in cents.
+     * Tax-inclusive price in cents.
      */
     #[Column]
     public int $price = 0;

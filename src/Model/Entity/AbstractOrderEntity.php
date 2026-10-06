@@ -15,7 +15,7 @@ use Contenir\Db\Model\Mapping\Id;
 use DateTimeImmutable;
 
 /**
- * A gallery order. Change its status through OrderManager, which enforces
+ * A gallery order. Change its status through the order services, which enforce
  * the OrderStatus lifecycle; the timestamps record when each step happened.
  *
  * Extend it with a final class carrying #[Table('gallery_order')] (or use
@@ -50,13 +50,13 @@ abstract class AbstractOrderEntity
     public OrderStatus $status = OrderStatus::Pending;
 
     /**
-     * GST-inclusive total in cents.
+     * Tax-inclusive total in cents.
      */
     #[Column]
     public int $total = 0;
 
     /**
-     * The GST included in the total, in cents.
+     * The tax included in the total, in cents, at the rate configured when the order was created.
      */
     #[Column('gst_amount')]
     public int $gstAmount = 0;
