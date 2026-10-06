@@ -6,7 +6,9 @@ namespace Contenir\Commerce\Enquiry;
 
 /**
  * Staff pipeline for prospective artist submissions. Reclassification is
- * unrestricted — staff may move an enquiry between any two states.
+ * unrestricted: staff may move an enquiry between any two states.
+ *
+ * @api
  */
 enum EnquiryStatus: string
 {
@@ -19,11 +21,11 @@ enum EnquiryStatus: string
     public function label(): string
     {
         return match ($this) {
-            self::NewEnquiry  => 'New',
+            self::NewEnquiry => 'New',
             self::UnderReview => 'Under review',
             self::Shortlisted => 'Shortlisted',
-            self::Declined    => 'Declined',
-            self::Accepted    => 'Accepted',
+            self::Declined => 'Declined',
+            self::Accepted => 'Accepted',
         };
     }
 }

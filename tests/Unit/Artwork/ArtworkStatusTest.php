@@ -7,20 +7,12 @@ namespace Contenir\Commerce\Tests\Unit\Artwork;
 use Contenir\Commerce\Artwork\ArtworkStatus;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 
 #[Group('unit')]
 final class ArtworkStatusTest extends TestCase
 {
-    #[DataProvider('statusProvider')]
-    public function testMapsDatabaseValueToLabel(string $value, ArtworkStatus $expected, string $label): void
-    {
-        $status = ArtworkStatus::from($value);
-
-        $this->assertSame($expected, $status);
-        $this->assertSame($label, $status->label());
-    }
-
     /**
      * @return array<string, array{string, ArtworkStatus, string}>
      */
@@ -30,5 +22,12 @@ final class ArtworkStatusTest extends TestCase
             'available' => ['available', ArtworkStatus::Available, 'Available'],
             'sold'      => ['sold', ArtworkStatus::Sold, 'Sold'],
         ];
+    }
+
+    #[DataProvider('statusProvider')]
+    #[Test]
+    public function mapsTheStoredValueToALabel(string $value, ArtworkStatus $status, string $label): void
+    {
+        static::assertSame([$status, $label], [ArtworkStatus::from($value), $status->label()]);
     }
 }

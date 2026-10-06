@@ -6,90 +6,127 @@ namespace Contenir\Commerce\Payment;
 
 use Contenir\Commerce\Exception\PaymentFailedException;
 use Contenir\Commerce\Money\Money;
+use Override;
 use Psr\Clock\ClockInterface;
 use Stripe\Checkout\Session;
-use Stripe\Exception\ApiErrorException;
+use Stripe\Exception\ExceptionInterface as StripeException;
 use Stripe\StripeClient;
 
-use function array_map;
 use function is_string;
 
-final class StripeGateway implements PaymentGatewayInterface
+/**
+ * Stripe hosted Checkout in AUD. Every error stripe-php raises (API,
+ * network, authentication, invalid argument) is rethrown as
+ * PaymentFailedException with the Stripe exception as its previous.
+ *
+ * @api
+ */
+final readonly class StripeGateway implements PaymentGatewayInterface
 {
-    private const CURRENCY = 'aud';
+    private const string CURRENCY = 'aud';
 
     public function __construct(
-        private readonly StripeClient $client,
-        private readonly ClockInterface $clock
-    ) {
-    }
+        private StripeClient $client,
+        private ClockInterface $clock,
+    ) {}
 
+    /**
+     * @throws PaymentFailedException
+     */
+    #[Override]
     public function createCheckoutSession(CheckoutRequest $request): CheckoutSession
     {
+        $lineItems = [];
+        foreach ($request->lineItems as $item) {
+            $lineItems[] = $this->toStripeLineItem($item);
+        }
+
         $params = [
             'mode'        => 'payment',
-            'line_items'  => array_map(
-                fn (CheckoutLineItem $item): array => $this->toStripeLineItem($item),
-                $request->lineItems
-            ),
+            'line_items'  => $lineItems,
             'success_url' => $request->successUrl,
             'cancel_url'  => $request->cancelUrl,
             'expires_at'  => $this->clock->now()->getTimestamp() + ($request->expiresAfterMinutes * 60),
         ];
 
-        if ($request->customerEmail !== null) {
+        if (null !== $request->customerEmail) {
             $params['customer_email'] = $request->customerEmail;
         }
 
-        if ($request->metadata !== []) {
+        if ([] !== $request->metadata) {
             $params['metadata'] = $request->metadata;
         }
 
         try {
             $session = $this->client->checkout->sessions->create($params);
-        } catch (ApiErrorException $e) {
-            throw new PaymentFailedException('Unable to create Stripe checkout session', 0, $e);
+        } catch (StripeException $e) {
+            throw PaymentFailedException::fromProvider('create Stripe checkout session', $e);
         }
 
         return $this->toCheckoutSession($session);
     }
 
+    /**
+     * @throws PaymentFailedException
+     */
+    #[Override]
+    public function refund(
+        string $paymentIntentId,
+        ?Money $amount = null,
+        ?string $idempotencyKey = null,
+    ): RefundResult {
+        $params = ['payment_intent' => $paymentIntentId];
+        if (null !== $amount) {
+            $params['amount'] = $amount->amount;
+        }
+
+        $options = null === $idempotencyKey ? [] : ['idempotency_key' => $idempotencyKey];
+
+        try {
+            $refund = $this->client->refunds->create($params, $options);
+        } catch (StripeException $e) {
+            throw PaymentFailedException::fromProvider('refund Stripe payment', $e);
+        }
+
+        return new RefundResult($refund->id, (string) $refund->status);
+    }
+
+    /**
+     * @throws PaymentFailedException
+     */
+    #[Override]
     public function retrieveCheckoutSession(string $sessionId): CheckoutSession
     {
         try {
             $session = $this->client->checkout->sessions->retrieve($sessionId);
-        } catch (ApiErrorException $e) {
-            throw new PaymentFailedException('Unable to retrieve Stripe checkout session', 0, $e);
+        } catch (StripeException $e) {
+            throw PaymentFailedException::fromProvider('retrieve Stripe checkout session', $e);
         }
 
         return $this->toCheckoutSession($session);
     }
 
-    public function refund(string $paymentIntentId, ?Money $amount = null): RefundResult
+    private function toCheckoutSession(Session $session): CheckoutSession
     {
-        $params = ['payment_intent' => $paymentIntentId];
+        $paymentIntent = $session->payment_intent;
 
-        if ($amount !== null) {
-            $params['amount'] = $amount->amount;
-        }
-
-        try {
-            $refund = $this->client->refunds->create($params);
-        } catch (ApiErrorException $e) {
-            throw new PaymentFailedException('Unable to refund Stripe payment', 0, $e);
-        }
-
-        return new RefundResult((string) $refund->id, (string) $refund->status);
+        return new CheckoutSession(
+            $session->id,
+            (string) $session->status,
+            $session->url,
+            null === $paymentIntent || is_string($paymentIntent) ? $paymentIntent : $paymentIntent->id,
+            $session->customer_email,
+            $session->payment_status,
+        );
     }
 
     /**
-     * @return array<string, mixed>
+     * @return array{quantity: int, price_data: array{currency: string, unit_amount: int, product_data: array{name: string, description?: string}}}
      */
     private function toStripeLineItem(CheckoutLineItem $item): array
     {
         $productData = ['name' => $item->name];
-
-        if ($item->description !== null) {
+        if (null !== $item->description) {
             $productData['description'] = $item->description;
         }
 
@@ -101,18 +138,5 @@ final class StripeGateway implements PaymentGatewayInterface
                 'product_data' => $productData,
             ],
         ];
-    }
-
-    private function toCheckoutSession(Session $session): CheckoutSession
-    {
-        $paymentIntent = $session->payment_intent;
-
-        return new CheckoutSession(
-            (string) $session->id,
-            (string) $session->status,
-            $session->url,
-            $paymentIntent === null ? null : (is_string($paymentIntent) ? $paymentIntent : $paymentIntent->id),
-            $session->customer_email
-        );
     }
 }

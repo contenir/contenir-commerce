@@ -4,36 +4,49 @@ declare(strict_types=1);
 
 namespace Contenir\Commerce\Model\Entity;
 
-use Contenir\Db\Model\Entity\AbstractEntity;
+use Contenir\Db\Model\Mapping\Column;
+use Contenir\Db\Model\Mapping\Id;
+use Contenir\Db\Model\Mapping\Table;
+use DateTimeImmutable;
 
 /**
- * @property int $email_log_id
- * @property ?int $order_id
- * @property ?int $artist_enquiry_id
- * @property string $recipient
- * @property string $subject
- * @property ?string $message_class
- * @property string $status
- * @property ?string $error
- * @property ?string $created
+ * A record of one transactional email, linked to the order or artist
+ * enquiry it was about. The status is the site's own vocabulary, for
+ * example "sent" or "failed".
+ *
+ * @api
+ *
+ * @mago-expect analysis:missing-constructor Entities are hydrated without their constructor; required columns
+ *     and relations stay uninitialised until they are assigned or loaded.
  */
-class EmailLogEntity extends AbstractEntity
+#[Table('email_log')]
+final class EmailLogEntity
 {
-    /** @var list<string> */
-    protected array $primaryKeys = [
-        'email_log_id',
-    ];
+    #[Id(generated: true)]
+    #[Column('email_log_id')]
+    public ?int $emailLogId = null;
 
-    /** @var list<string> */
-    protected array $columns = [
-        'email_log_id',
-        'order_id',
-        'artist_enquiry_id',
-        'recipient',
-        'subject',
-        'message_class',
-        'status',
-        'error',
-        'created',
-    ];
+    #[Column('order_id')]
+    public ?int $orderId = null;
+
+    #[Column('artist_enquiry_id')]
+    public ?int $artistEnquiryId = null;
+
+    #[Column]
+    public string $recipient;
+
+    #[Column]
+    public string $subject;
+
+    #[Column('message_class')]
+    public ?string $messageClass = null;
+
+    #[Column]
+    public string $status;
+
+    #[Column]
+    public ?string $error = null;
+
+    #[Column]
+    public ?DateTimeImmutable $created = null;
 }

@@ -6,16 +6,18 @@ namespace Contenir\Commerce\Order;
 
 use Contenir\Commerce\Model\Entity\OrderEntity;
 
-final class CompletionResult
+/**
+ * @api
+ */
+final readonly class CompletionResult
 {
     /**
      * @param list<string> $unavailableTitles titles that were lost to
      *     another buyer when the outcome is RefundedRace
      */
     public function __construct(
-        public readonly OrderEntity $order,
-        public readonly CompletionOutcome $outcome,
-        public readonly array $unavailableTitles = []
-    ) {
-    }
+        public OrderEntity $order,
+        public CompletionOutcome $outcome,
+        public array $unavailableTitles = [],
+    ) {}
 }

@@ -4,64 +4,159 @@ declare(strict_types=1);
 
 namespace Contenir\Commerce\Tests\Integration\Model\Repository;
 
+use Contenir\Commerce\Artwork\ArtworkStatus;
+use Contenir\Commerce\Artwork\ItemType;
 use Contenir\Commerce\Model\Entity\ArtworkEntity;
 use Contenir\Commerce\Model\Repository\ArtworkRepository;
-use Contenir\Db\Model\Repository\RepositoryLookup;
-use Laminas\Db\Adapter\Adapter;
+use Contenir\Commerce\Tests\Trait\SqliteDatabaseTrait;
+use DateTimeImmutable;
+use Override;
+use PhpDb\Adapter\Profiler\Profiler;
 use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+
+use function array_keys;
+use function array_map;
 
 #[Group('integration')]
 #[Group('repository')]
 final class ArtworkRepositoryTest extends TestCase
 {
+    use SqliteDatabaseTrait;
+
     private ArtworkRepository $repository;
 
-    protected function setUp(): void
+    #[Test]
+    public function anEmptyResourceIdListRunsNoQuery(): void
     {
-        $adapter = new Adapter([
-            'driver'   => 'Pdo_Sqlite',
-            'database' => ':memory:',
+        $profiler = new Profiler();
+        $this->adapter->setProfiler($profiler);
+
+        static::assertSame([[], []], [$this->repository->findByResourceIds([]), $profiler->getProfiles()]);
+    }
+
+    #[Test]
+    public function availableOngoingWorksExcludeExhibitedSoldRetailAndUnlinkedRows(): void
+    {
+        static::assertSame([103], array_keys($this->repository->findAvailableOngoing()));
+    }
+
+    #[Test]
+    public function findCurrentRereadsAnArtworkTheManagerAlreadyHolds(): void
+    {
+        $held = $this->repository->find(1);
+        $this->updateBehindTheManager("UPDATE artwork SET status = 'sold' WHERE artwork_id = 1");
+
+        $current = $this->repository->findCurrent(1);
+
+        static::assertSame([$held, ArtworkStatus::Sold], [$current, $current?->status]);
+    }
+
+    #[Test]
+    public function findCurrentReturnsNullForAMissingArtwork(): void
+    {
+        static::assertNull($this->repository->findCurrent(999));
+    }
+
+    #[Test]
+    public function findsAnArtistsWorksKeyedByResourceId(): void
+    {
+        static::assertSame([103, 104], array_keys($this->repository->findByArtistResourceId(12)));
+    }
+
+    #[Test]
+    public function findsAnExhibitionsWorksIncludingSoldOnes(): void
+    {
+        $works = $this->repository->findByExhibitionResourceId(51);
+
+        static::assertSame(
+            [
+                [101, 102],
+                [101 => ArtworkStatus::Available, 102 => ArtworkStatus::Sold],
+            ],
+            [array_keys($works), array_map(static fn(ArtworkEntity $work): ArtworkStatus => $work->status, $works)],
+        );
+    }
+
+    #[Test]
+    public function findsArtworksByResourceIdIgnoringUnknownIds(): void
+    {
+        static::assertSame([101, 103], array_keys($this->repository->findByResourceIds([101, 103, 999])));
+    }
+
+    #[Test]
+    public function mapsEveryColumn(): void
+    {
+        $this->insert('artwork', [
+            'artwork_id'             => 50,
+            'resource_id'            => 500,
+            'artist_resource_id'     => 13,
+            'exhibition_resource_id' => 52,
+            'item_type'              => 'retail',
+            'price'                  => 3_500,
+            'status'                 => 'sold',
+            'medium'                 => 'Screen print',
+            'dimensions'             => '40 x 30 cm',
+            'year'                   => '2026',
+            'edition_details'        => '1 of 50',
+            'external_sale_url'      => 'https://shop.example.test/tote',
+            'created'                => '2026-08-01 09:00:00',
+            'updated'                => '2026-08-02 10:30:00',
         ]);
 
-        $adapter->query(
-            'CREATE TABLE artwork ('
-                . 'artwork_id INTEGER PRIMARY KEY AUTOINCREMENT, '
-                . 'resource_id INTEGER NULL, '
-                . 'artist_resource_id INTEGER NULL, '
-                . 'exhibition_resource_id INTEGER NULL, '
-                . 'item_type TEXT NOT NULL DEFAULT "artwork", '
-                . 'price INTEGER NOT NULL DEFAULT 0, '
-                . 'status TEXT NOT NULL DEFAULT "available", '
-                . 'medium TEXT NULL, '
-                . 'dimensions TEXT NULL, '
-                . 'year TEXT NULL, '
-                . 'edition_details TEXT NULL, '
-                . 'external_sale_url TEXT NULL, '
-                . 'created TEXT NULL, '
-                . 'updated TEXT NULL'
-            . ')',
-            Adapter::QUERY_MODE_EXECUTE
-        );
+        $artwork = $this->repository->find(50);
 
-        $this->repository = new ArtworkRepository(
-            $adapter,
-            new ArtworkEntity(),
-            $this->createStub(RepositoryLookup::class)
-        );
-
-        $fixtures = [
+        static::assertEquals(
             [
-                'resource_id'            => 101,
-                'artist_resource_id'     => 11,
-                'exhibition_resource_id' => 51,
-                'status'                 => 'available',
+                50,
+                500,
+                13,
+                52,
+                ItemType::Retail,
+                3_500,
+                ArtworkStatus::Sold,
+                'Screen print',
+                '40 x 30 cm',
+                '2026',
+                '1 of 50',
+                'https://shop.example.test/tote',
+                new DateTimeImmutable('2026-08-01 09:00:00'),
+                new DateTimeImmutable('2026-08-02 10:30:00'),
             ],
             [
-                'resource_id'            => 102,
-                'artist_resource_id'     => 11,
-                'exhibition_resource_id' => 51,
-                'status'                 => 'sold',
+                $artwork?->artworkId,
+                $artwork?->resourceId,
+                $artwork?->artistResourceId,
+                $artwork?->exhibitionResourceId,
+                $artwork?->itemType,
+                $artwork?->price,
+                $artwork?->status,
+                $artwork?->medium,
+                $artwork?->dimensions,
+                $artwork?->year,
+                $artwork?->editionDetails,
+                $artwork?->externalSaleUrl,
+                $artwork?->created,
+                $artwork?->updated,
+            ],
+        );
+    }
+
+    #[Override]
+    protected function setUp(): void
+    {
+        $this->setUpDatabase();
+        $this->repository = new ArtworkRepository($this->em);
+
+        $fixtures = [
+            ['resource_id' => 101, 'artist_resource_id' => 11, 'exhibition_resource_id' => 51, 'status' => 'available'],
+            ['resource_id' => 102, 'artist_resource_id' => 11, 'exhibition_resource_id' => 51, 'status' => 'sold'],
+            [
+                'resource_id'            => null,
+                'artist_resource_id'     => 12,
+                'exhibition_resource_id' => null,
+                'status'                 => 'available',
             ],
             [
                 'resource_id'            => 103,
@@ -69,12 +164,7 @@ final class ArtworkRepositoryTest extends TestCase
                 'exhibition_resource_id' => null,
                 'status'                 => 'available',
             ],
-            [
-                'resource_id'            => 104,
-                'artist_resource_id'     => 12,
-                'exhibition_resource_id' => null,
-                'status'                 => 'sold',
-            ],
+            ['resource_id' => 104, 'artist_resource_id' => 12, 'exhibition_resource_id' => null, 'status' => 'sold'],
             [
                 'resource_id'            => 105,
                 'artist_resource_id'     => null,
@@ -85,34 +175,7 @@ final class ArtworkRepositoryTest extends TestCase
         ];
 
         foreach ($fixtures as $fixture) {
-            $this->repository->save($this->repository->create($fixture + ['price' => 100000]));
+            $this->insert('artwork', [...$fixture, 'price' => 100_000]);
         }
-    }
-
-    public function testFindsArtworksKeyedByResourceId(): void
-    {
-        $map = $this->repository->findByResourceIds([101, 103, 999]);
-
-        $this->assertSame([101, 103], array_keys($map));
-        $this->assertSame('available', $map[101]->status);
-        $this->assertSame([], $this->repository->findByResourceIds([]));
-    }
-
-    public function testFindsExhibitionWorksIncludingSoldOnes(): void
-    {
-        $map = $this->repository->findByExhibitionResourceId(51);
-
-        $this->assertSame([101, 102], array_keys($map));
-        $this->assertSame('sold', $map[102]->status);
-    }
-
-    public function testFindsWorksByArtist(): void
-    {
-        $this->assertSame([103, 104], array_keys($this->repository->findByArtistResourceId(12)));
-    }
-
-    public function testAvailableOngoingExcludesExhibitedSoldAndRetailWorks(): void
-    {
-        $this->assertSame([103], array_keys($this->repository->findAvailableOngoing()));
     }
 }

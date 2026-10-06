@@ -7,13 +7,18 @@ namespace Contenir\Commerce\Tests\Unit;
 use Contenir\Commerce\ConfigProvider;
 use Contenir\Commerce\Module;
 use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 
 #[Group('unit')]
 final class ModuleTest extends TestCase
 {
-    public function testExposesTheConfigProviderConfigToLaminasMvc(): void
+    #[Test]
+    public function exposesTheConfigProviderServicesToLaminasMvc(): void
     {
-        $this->assertSame((new ConfigProvider())(), (new Module())->getConfig());
+        static::assertSame(
+            ['service_manager' => (new ConfigProvider())->getDependencies()],
+            (new Module())->getConfig(),
+        );
     }
 }

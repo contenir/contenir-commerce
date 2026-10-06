@@ -4,32 +4,36 @@ declare(strict_types=1);
 
 namespace Contenir\Commerce\Model\Repository;
 
+use Contenir\Commerce\Enquiry\EnquiryStatus;
 use Contenir\Commerce\Model\Entity\ArtistEnquiryEntity;
-use Contenir\Db\Model\Repository\AbstractRepository;
-use Laminas\Db\Sql\Select;
-use Laminas\Db\Sql\TableIdentifier;
+use Contenir\Db\Model\EntityManager;
+use Contenir\Db\Model\Exception\ExceptionInterface as DbModelException;
+use Contenir\Db\Model\Repository;
 
-class ArtistEnquiryRepository extends AbstractRepository
+/**
+ * @extends Repository<ArtistEnquiryEntity>
+ *
+ * @api
+ */
+final class ArtistEnquiryRepository extends Repository
 {
-    /** @var string|array<string, string>|TableIdentifier */
-    protected TableIdentifier|string|array|null $table = 'artist_enquiry';
-
     /**
-     * @param iterable<string, mixed> $data
+     * @throws DbModelException When the entity mapping is invalid.
      */
-    public function create(iterable $data = []): ArtistEnquiryEntity
+    public function __construct(EntityManager $em)
     {
-        return new ArtistEnquiryEntity($data);
+        parent::__construct($em, ArtistEnquiryEntity::class);
     }
 
-    public function findOne(mixed $where = null, mixed $order = null, ?Select $select = null): ?ArtistEnquiryEntity
+    /**
+     * Enquiries in one pipeline state, newest first.
+     *
+     * @return list<ArtistEnquiryEntity>
+     *
+     * @throws DbModelException
+     */
+    public function findByStatus(EnquiryStatus $status): array
     {
-        foreach ($this->find($where, $order, $select) as $entity) {
-            if ($entity instanceof ArtistEnquiryEntity) {
-                return $entity;
-            }
-        }
-
-        return null;
+        return $this->findBy(['status' => $status], ['artistEnquiryId' => 'DESC']);
     }
 }

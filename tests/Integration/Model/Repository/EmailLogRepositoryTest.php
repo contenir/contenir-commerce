@@ -6,90 +6,110 @@ namespace Contenir\Commerce\Tests\Integration\Model\Repository;
 
 use Contenir\Commerce\Model\Entity\EmailLogEntity;
 use Contenir\Commerce\Model\Repository\EmailLogRepository;
-use Contenir\Db\Model\Repository\RepositoryLookup;
-use Laminas\Db\Adapter\Adapter;
+use Contenir\Commerce\Tests\Trait\SqliteDatabaseTrait;
+use DateTimeImmutable;
+use Override;
 use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 
-/**
- * Round-trips one repository against a real (in-memory) database as the
- * reference pattern for the rest; each test builds a fresh database, so no
- * teardown is required.
- */
+use function array_map;
+
 #[Group('integration')]
 #[Group('repository')]
 final class EmailLogRepositoryTest extends TestCase
 {
+    use SqliteDatabaseTrait;
+
     private EmailLogRepository $repository;
 
+    #[Test]
+    public function findsTheEmailsAboutAnEnquiryNewestFirst(): void
+    {
+        static::assertSame([4, 2], $this->ids($this->repository->findByArtistEnquiryId(7)));
+    }
+
+    #[Test]
+    public function findsTheEmailsAboutAnOrderNewestFirst(): void
+    {
+        static::assertSame([3, 1], $this->ids($this->repository->findByOrderId(5)));
+    }
+
+    #[Test]
+    public function savesANewEntryAndUpdatesItInPlace(): void
+    {
+        $entry               = new EmailLogEntity();
+        $entry->orderId      = 9;
+        $entry->recipient    = 'buyer@example.test';
+        $entry->subject      = 'Your order';
+        $entry->messageClass = 'OrderConfirmation';
+        $entry->status       = 'failed';
+        $entry->error        = 'SMTP timeout';
+        $entry->created      = new DateTimeImmutable('2026-08-20 10:00:00');
+        $this->em->save($entry);
+
+        $entry->status = 'sent';
+        $entry->error  = null;
+        $this->em->save($entry);
+        $this->em->clear();
+
+        $found = $this->repository->find((int) $entry->emailLogId);
+
+        static::assertEquals(
+            [
+                9,
+                null,
+                'buyer@example.test',
+                'Your order',
+                'OrderConfirmation',
+                'sent',
+                null,
+                $entry->created,
+                5,
+            ],
+            [
+                $found?->orderId,
+                $found?->artistEnquiryId,
+                $found?->recipient,
+                $found?->subject,
+                $found?->messageClass,
+                $found?->status,
+                $found?->error,
+                $found?->created,
+                $this->repository->count(),
+            ],
+        );
+    }
+
+    #[Override]
     protected function setUp(): void
     {
-        $adapter = new Adapter([
-            'driver'   => 'Pdo_Sqlite',
-            'database' => ':memory:',
+        $this->setUpDatabase();
+        $this->repository = new EmailLogRepository($this->em);
+
+        $this->insert('email_log', ['order_id' => 5, 'recipient' => 'a@x.test', 'subject' => 'S', 'status' => 'sent']);
+        $this->insert('email_log', [
+            'artist_enquiry_id' => 7,
+            'recipient'         => 'b@x.test',
+            'subject'           => 'S',
+            'status'            => 'sent',
         ]);
-
-        $adapter->query(
-            'CREATE TABLE email_log ('
-                . 'email_log_id INTEGER PRIMARY KEY AUTOINCREMENT, '
-                . 'order_id INTEGER NULL, '
-                . 'artist_enquiry_id INTEGER NULL, '
-                . 'recipient TEXT NOT NULL, '
-                . 'subject TEXT NOT NULL, '
-                . 'message_class TEXT NULL, '
-                . 'status TEXT NOT NULL, '
-                . 'error TEXT NULL, '
-                . 'created TEXT NULL'
-            . ')',
-            Adapter::QUERY_MODE_EXECUTE
-        );
-
-        $this->repository = new EmailLogRepository(
-            $adapter,
-            new EmailLogEntity(),
-            $this->createStub(RepositoryLookup::class)
-        );
+        $this->insert('email_log', ['order_id' => 5, 'recipient' => 'c@x.test', 'subject' => 'S', 'status' => 'sent']);
+        $this->insert('email_log', [
+            'artist_enquiry_id' => 7,
+            'recipient'         => 'd@x.test',
+            'subject'           => 'S',
+            'status'            => 'sent',
+        ]);
     }
 
-    public function testSavesANewLogEntryAndAssignsItsPrimaryKey(): void
+    /**
+     * @param list<EmailLogEntity> $entries
+     *
+     * @return list<?int>
+     */
+    private function ids(array $entries): array
     {
-        $entry = $this->repository->create([
-            'recipient' => 'buyer@example.test',
-            'subject'   => 'Your Lon Retreat order',
-            'status'    => 'sent',
-            'created'   => '2026-08-20 10:00:00',
-        ]);
-
-        $this->repository->save($entry);
-
-        $found = $this->repository->findOne(['recipient' => 'buyer@example.test']);
-
-        $this->assertInstanceOf(EmailLogEntity::class, $found);
-        $this->assertSame('Your Lon Retreat order', $found->subject);
-        $this->assertGreaterThan(0, $found->email_log_id);
-    }
-
-    public function testUpdatesAnExistingLogEntryInPlace(): void
-    {
-        $entry = $this->repository->create([
-            'recipient' => 'buyer@example.test',
-            'subject'   => 'Your Lon Retreat order',
-            'status'    => 'failed',
-            'error'     => 'SMTP timeout',
-        ]);
-        $this->repository->save($entry);
-
-        $saved         = $this->repository->findOne(['recipient' => 'buyer@example.test']);
-        $this->assertInstanceOf(EmailLogEntity::class, $saved);
-        $saved->status = 'sent';
-        $saved->error  = null;
-        $this->repository->save($saved);
-
-        $found = $this->repository->findOne(['email_log_id' => $saved->email_log_id]);
-
-        $this->assertInstanceOf(EmailLogEntity::class, $found);
-        $this->assertSame('sent', $found->status);
-        $this->assertNull($found->error);
-        $this->assertCount(1, $this->repository->find());
+        return array_map(static fn(EmailLogEntity $entry): ?int => $entry->emailLogId, $entries);
     }
 }

@@ -4,17 +4,23 @@ declare(strict_types=1);
 
 namespace Contenir\Commerce\Order;
 
-use InvalidArgumentException;
+use Contenir\Commerce\Exception\InvalidArgumentException;
 
-final class CustomerDetails
+/**
+ * @api
+ */
+final readonly class CustomerDetails
 {
+    /**
+     * @throws InvalidArgumentException When the name or email is empty.
+     */
     public function __construct(
-        public readonly string $name,
-        public readonly string $email,
-        public readonly ?string $phone = null,
-        public readonly ?string $notes = null
+        public string $name,
+        public string $email,
+        public ?string $phone = null,
+        public ?string $notes = null,
     ) {
-        if ($name === '' || $email === '') {
+        if ('' === $name || '' === $email) {
             throw new InvalidArgumentException('Customer name and email are required');
         }
     }

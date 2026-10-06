@@ -5,31 +5,51 @@ declare(strict_types=1);
 namespace Contenir\Commerce\Model\Repository;
 
 use Contenir\Commerce\Model\Entity\OrderEntity;
-use Contenir\Db\Model\Repository\AbstractRepository;
-use Laminas\Db\Sql\Select;
-use Laminas\Db\Sql\TableIdentifier;
+use Contenir\Commerce\Order\OrderStatus;
+use Contenir\Db\Model\EntityManager;
+use Contenir\Db\Model\Exception\ExceptionInterface as DbModelException;
+use Contenir\Db\Model\Repository;
 
-class OrderRepository extends AbstractRepository
+/**
+ * @extends Repository<OrderEntity>
+ *
+ * @api
+ */
+final class OrderRepository extends Repository
 {
-    /** @var string|array<string, string>|TableIdentifier */
-    protected TableIdentifier|string|array|null $table = 'gallery_order';
-
     /**
-     * @param iterable<string, mixed> $data
+     * @throws DbModelException When the entity mapping is invalid.
      */
-    public function create(iterable $data = []): OrderEntity
+    public function __construct(EntityManager $em)
     {
-        return new OrderEntity($data);
+        parent::__construct($em, OrderEntity::class);
     }
 
-    public function findOne(mixed $where = null, mixed $order = null, ?Select $select = null): ?OrderEntity
+    /**
+     * Orders in one status, newest first.
+     *
+     * @return list<OrderEntity>
+     *
+     * @throws DbModelException
+     */
+    public function findByStatus(OrderStatus $status): array
     {
-        foreach ($this->find($where, $order, $select) as $entity) {
-            if ($entity instanceof OrderEntity) {
-                return $entity;
-            }
-        }
+        return $this->findBy(['status' => $status], ['orderId' => 'DESC']);
+    }
 
-        return null;
+    /**
+     * @throws DbModelException
+     */
+    public function findOneByCheckoutSessionId(string $sessionId): ?OrderEntity
+    {
+        return $this->findOneBy(['stripeCheckoutSessionId' => $sessionId]);
+    }
+
+    /**
+     * @throws DbModelException
+     */
+    public function findOneByOrderRef(string $orderRef): ?OrderEntity
+    {
+        return $this->findOneBy(['orderRef' => $orderRef]);
     }
 }

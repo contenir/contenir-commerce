@@ -5,7 +5,11 @@ declare(strict_types=1);
 namespace Contenir\Commerce;
 
 /**
- * Laminas MVC entry point; Mezzio applications use ConfigProvider directly.
+ * laminas-mvc module: exposes the ConfigProvider services under the
+ * "service_manager" key that laminas-mvc reads. Mezzio applications use
+ * ConfigProvider directly.
+ *
+ * @api
  */
 final class Module
 {
@@ -14,6 +18,6 @@ final class Module
      */
     public function getConfig(): array
     {
-        return (new ConfigProvider())();
+        return ['service_manager' => (new ConfigProvider())->getDependencies()];
     }
 }

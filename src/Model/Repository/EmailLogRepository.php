@@ -5,31 +5,46 @@ declare(strict_types=1);
 namespace Contenir\Commerce\Model\Repository;
 
 use Contenir\Commerce\Model\Entity\EmailLogEntity;
-use Contenir\Db\Model\Repository\AbstractRepository;
-use Laminas\Db\Sql\Select;
-use Laminas\Db\Sql\TableIdentifier;
+use Contenir\Db\Model\EntityManager;
+use Contenir\Db\Model\Exception\ExceptionInterface as DbModelException;
+use Contenir\Db\Model\Repository;
 
-class EmailLogRepository extends AbstractRepository
+/**
+ * @extends Repository<EmailLogEntity>
+ *
+ * @api
+ */
+final class EmailLogRepository extends Repository
 {
-    /** @var string|array<string, string>|TableIdentifier */
-    protected TableIdentifier|string|array|null $table = 'email_log';
-
     /**
-     * @param iterable<string, mixed> $data
+     * @throws DbModelException When the entity mapping is invalid.
      */
-    public function create(iterable $data = []): EmailLogEntity
+    public function __construct(EntityManager $em)
     {
-        return new EmailLogEntity($data);
+        parent::__construct($em, EmailLogEntity::class);
     }
 
-    public function findOne(mixed $where = null, mixed $order = null, ?Select $select = null): ?EmailLogEntity
+    /**
+     * The emails sent about one artist enquiry, newest first.
+     *
+     * @return list<EmailLogEntity>
+     *
+     * @throws DbModelException
+     */
+    public function findByArtistEnquiryId(int $artistEnquiryId): array
     {
-        foreach ($this->find($where, $order, $select) as $entity) {
-            if ($entity instanceof EmailLogEntity) {
-                return $entity;
-            }
-        }
+        return $this->findBy(['artistEnquiryId' => $artistEnquiryId], ['emailLogId' => 'DESC']);
+    }
 
-        return null;
+    /**
+     * The emails sent about one order, newest first.
+     *
+     * @return list<EmailLogEntity>
+     *
+     * @throws DbModelException
+     */
+    public function findByOrderId(int $orderId): array
+    {
+        return $this->findBy(['orderId' => $orderId], ['emailLogId' => 'DESC']);
     }
 }
