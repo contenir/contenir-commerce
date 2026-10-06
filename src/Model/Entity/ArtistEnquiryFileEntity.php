@@ -4,32 +4,42 @@ declare(strict_types=1);
 
 namespace Contenir\Commerce\Model\Entity;
 
-use Contenir\Db\Model\Entity\AbstractEntity;
+use Contenir\Db\Model\Mapping\Column;
+use Contenir\Db\Model\Mapping\Id;
+use Contenir\Db\Model\Mapping\Table;
+use DateTimeImmutable;
 
 /**
- * @property int $artist_enquiry_file_id
- * @property int $artist_enquiry_id
- * @property string $filename
- * @property string $path
- * @property ?string $mime_type
- * @property ?int $size
- * @property ?string $created
+ * A file uploaded with an artist enquiry. The path is relative to the
+ * site's public directory.
+ *
+ * @api
+ *
+ * @mago-expect analysis:missing-constructor Entities are hydrated without their constructor; required columns
+ *     and relations stay uninitialised until they are assigned or loaded.
  */
-class ArtistEnquiryFileEntity extends AbstractEntity
+#[Table('artist_enquiry_file')]
+final class ArtistEnquiryFileEntity
 {
-    /** @var list<string> */
-    protected array $primaryKeys = [
-        'artist_enquiry_file_id',
-    ];
+    #[Id(generated: true)]
+    #[Column('artist_enquiry_file_id')]
+    public ?int $artistEnquiryFileId = null;
 
-    /** @var list<string> */
-    protected array $columns = [
-        'artist_enquiry_file_id',
-        'artist_enquiry_id',
-        'filename',
-        'path',
-        'mime_type',
-        'size',
-        'created',
-    ];
+    #[Column('artist_enquiry_id')]
+    public int $artistEnquiryId;
+
+    #[Column]
+    public string $filename;
+
+    #[Column]
+    public string $path;
+
+    #[Column('mime_type')]
+    public ?string $mimeType = null;
+
+    #[Column]
+    public ?int $size = null;
+
+    #[Column]
+    public ?DateTimeImmutable $created = null;
 }

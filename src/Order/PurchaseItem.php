@@ -8,15 +8,18 @@ use Contenir\Commerce\Money\Money;
 
 /**
  * A cart line at the moment of purchase. Title, artist and price are
- * snapshots — the order must stay accurate if the artwork later changes.
+ * snapshots: the order must stay accurate if the artwork later changes.
+ * Build the price from the artwork row on the server, never from the
+ * request.
+ *
+ * @api
  */
-final class PurchaseItem
+final readonly class PurchaseItem
 {
     public function __construct(
-        public readonly int $artworkId,
-        public readonly string $title,
-        public readonly Money $price,
-        public readonly ?string $artistName = null
-    ) {
-    }
+        public int $artworkId,
+        public string $title,
+        public Money $price,
+        public ?string $artistName = null,
+    ) {}
 }

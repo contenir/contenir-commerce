@@ -7,6 +7,8 @@ namespace Contenir\Commerce\Artwork;
 /**
  * Original artworks and curated retail products (tote bags, cards) share the
  * same table and cart; retail rows simply have no artist or exhibition.
+ *
+ * @api
  */
 enum ItemType: string
 {
@@ -17,7 +19,7 @@ enum ItemType: string
     {
         return match ($this) {
             self::Artwork => 'Artwork',
-            self::Retail  => 'Retail product',
+            self::Retail => 'Retail product',
         };
     }
 }

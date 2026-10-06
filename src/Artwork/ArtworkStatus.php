@@ -7,6 +7,8 @@ namespace Contenir\Commerce\Artwork;
 /**
  * Sold artworks stay publicly visible with a badge rather than disappearing,
  * so this is a display state as much as a stock state.
+ *
+ * @api
  */
 enum ArtworkStatus: string
 {
@@ -17,7 +19,7 @@ enum ArtworkStatus: string
     {
         return match ($this) {
             self::Available => 'Available',
-            self::Sold      => 'Sold',
+            self::Sold => 'Sold',
         };
     }
 }

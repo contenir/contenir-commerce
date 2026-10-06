@@ -1,19 +1,37 @@
 {
-    "name": "contenir/commerce",
-    "description": "Commerce domain for Contenir CMS — orders, artworks, GST-inclusive money and Stripe checkout for small-volume gallery sales.",
+    "name": "contenir/contenir-commerce",
+    "description": "Commerce domain for Contenir sites on contenir-db-model 2: orders and their lifecycle, artworks, GST-inclusive money, artist enquiries, the email log, and Stripe checkout and refunds.",
     "type": "library",
     "license": "MIT",
+    "keywords": [
+        "contenir",
+        "commerce",
+        "orders",
+        "stripe",
+        "gst"
+    ],
+    "homepage": "https://contenir.com.au",
+    "support": {
+        "docs": "https://github.com/contenir/contenir-commerce/tree/main/docs",
+        "issues": "https://github.com/contenir/contenir-commerce/issues",
+        "source": "https://github.com/contenir/contenir-commerce"
+    },
     "require": {
-        "php": "^8.1 || ^8.2 || ^8.3",
-        "contenir/contenir-db-model": "^1.0",
+        "php": "~8.3.0 || ~8.4.0 || ~8.5.0",
+        "contenir/contenir-db-model": "^2.0@RC",
         "psr/clock": "^1.0",
         "psr/container": "^1.1 || ^2.0",
-        "stripe/stripe-php": "^17.0"
+        "stripe/stripe-php": "^22.0"
     },
     "require-dev": {
-        "phpstan/phpstan": "^2.1",
-        "phpunit/phpunit": "^11.0",
-        "squizlabs/php_codesniffer": "^3.10"
+        "infection/infection": "^0.34.1",
+        "laminas/laminas-servicemanager": "^3.22 || ^4.0",
+        "php-db/phpdb-qa-tools": "0.1.x-dev",
+        "php-db/phpdb-sqlite": "^0.2.0 || 0.3.x-dev",
+        "phpunit/phpunit": "^11.5.50"
+    },
+    "replace": {
+        "contenir/commerce": "self.version"
     },
     "autoload": {
         "psr-4": {
@@ -26,18 +44,45 @@
         }
     },
     "scripts": {
-        "test": "phpunit",
-        "cs": "phpcs",
-        "cs-fix": "phpcbf",
-        "stan": "phpstan analyse"
+        "check": [
+            "@cs-check",
+            "@static-analysis",
+            "@test",
+            "@test-integration",
+            "@mutation-test"
+        ],
+        "cs-check": [
+            "mago format --check",
+            "mago lint"
+        ],
+        "cs-fix": [
+            "mago format",
+            "mago lint --fix"
+        ],
+        "static-analysis": "mago analyze",
+        "test": "phpunit --colors=always --testsuite unit",
+        "test-integration": "phpunit --colors=always --testsuite integration",
+        "test-coverage": "phpunit --colors=always --coverage-clover clover.xml",
+        "mutation-test": "infection"
     },
     "config": {
-        "sort-packages": true
+        "platform": {
+            "php": "8.3.99"
+        },
+        "sort-packages": true,
+        "allow-plugins": {
+            "infection/extension-installer": true
+        }
     },
     "extra": {
         "laminas": {
             "component": "Contenir\\Commerce",
             "config-provider": "Contenir\\Commerce\\ConfigProvider"
+        },
+        "branch-alias": {
+            "dev-main": "2.0.x-dev"
         }
-    }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
 }

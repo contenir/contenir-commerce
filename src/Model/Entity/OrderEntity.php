@@ -4,68 +4,119 @@ declare(strict_types=1);
 
 namespace Contenir\Commerce\Model\Entity;
 
-use Contenir\Commerce\Model\Repository\OrderItemRepository;
-use Contenir\Db\Model\Entity\AbstractEntity;
+use Contenir\Commerce\Exception\InvalidArgumentException;
+use Contenir\Commerce\Exception\OrderNotFoundException;
+use Contenir\Commerce\Money\Money;
+use Contenir\Commerce\Order\OrderStatus;
+use Contenir\Db\Model\Collection;
+use Contenir\Db\Model\Mapping\Column;
+use Contenir\Db\Model\Mapping\HasMany;
+use Contenir\Db\Model\Mapping\Id;
+use Contenir\Db\Model\Mapping\Table;
+use DateTimeImmutable;
 
 /**
- * @property int $order_id
- * @property string $order_ref
- * @property ?string $customer_name
- * @property ?string $customer_email
- * @property ?string $customer_phone
- * @property string $status
- * @property int $total
- * @property int $gst_amount
- * @property ?string $stripe_checkout_session_id
- * @property ?string $stripe_payment_intent_id
- * @property ?string $customer_notes
- * @property ?string $staff_notes
- * @property ?string $paid_at
- * @property ?string $collected_at
- * @property ?string $refunded_at
- * @property ?string $cancelled_at
- * @property ?string $created
- * @property ?string $updated
- * @property array<int, OrderItemEntity> $items
+ * A gallery order. Change its status through OrderManager, which enforces
+ * the OrderStatus lifecycle; the timestamps record when each step happened.
+ *
+ * @api
+ *
+ * @mago-expect analysis:missing-constructor Entities are hydrated without their constructor; required columns
+ *     and relations stay uninitialised until they are assigned or loaded.
+ *
+ * @mago-expect lint:too-many-properties One property per column of the gallery_order table.
  */
-class OrderEntity extends AbstractEntity
+#[Table('gallery_order')]
+final class OrderEntity
 {
-    /** @var list<string> */
-    protected array $primaryKeys = [
-        'order_id',
-    ];
+    #[Id(generated: true)]
+    #[Column('order_id')]
+    public ?int $orderId = null;
 
-    /** @var list<string> */
-    protected array $columns = [
-        'order_id',
-        'order_ref',
-        'customer_name',
-        'customer_email',
-        'customer_phone',
-        'status',
-        'total',
-        'gst_amount',
-        'stripe_checkout_session_id',
-        'stripe_payment_intent_id',
-        'customer_notes',
-        'staff_notes',
-        'paid_at',
-        'collected_at',
-        'refunded_at',
-        'cancelled_at',
-        'created',
-        'updated',
-    ];
+    #[Column('order_ref')]
+    public string $orderRef = '';
 
-    /** @var array<string, array<string, mixed>> */
-    protected array $relations = [
-        'items' => [
-            'type'   => AbstractEntity::RELATION_MANY,
-            'column' => ['order_id'],
-            'table'  => [
-                'class'  => OrderItemRepository::class,
-                'column' => ['order_id'],
-            ],
-        ],
-    ];
+    #[Column('customer_name')]
+    public ?string $customerName = null;
+
+    #[Column('customer_email')]
+    public ?string $customerEmail = null;
+
+    #[Column('customer_phone')]
+    public ?string $customerPhone = null;
+
+    #[Column]
+    public OrderStatus $status = OrderStatus::Pending;
+
+    /**
+     * GST-inclusive total in cents.
+     */
+    #[Column]
+    public int $total = 0;
+
+    /**
+     * The GST included in the total, in cents.
+     */
+    #[Column('gst_amount')]
+    public int $gstAmount = 0;
+
+    #[Column('stripe_checkout_session_id')]
+    public ?string $stripeCheckoutSessionId = null;
+
+    #[Column('stripe_payment_intent_id')]
+    public ?string $stripePaymentIntentId = null;
+
+    #[Column('customer_notes')]
+    public ?string $customerNotes = null;
+
+    #[Column('staff_notes')]
+    public ?string $staffNotes = null;
+
+    #[Column('paid_at')]
+    public ?DateTimeImmutable $paidAt = null;
+
+    #[Column('collected_at')]
+    public ?DateTimeImmutable $collectedAt = null;
+
+    #[Column('refunded_at')]
+    public ?DateTimeImmutable $refundedAt = null;
+
+    #[Column('cancelled_at')]
+    public ?DateTimeImmutable $cancelledAt = null;
+
+    #[Column]
+    public ?DateTimeImmutable $created = null;
+
+    #[Column]
+    public ?DateTimeImmutable $updated = null;
+
+    /**
+     * @var Collection<OrderItemEntity>
+     */
+    #[HasMany(OrderItemEntity::class, foreignKey: 'order_id', orderBy: ['order_item_id' => 'ASC'])]
+    public Collection $items;
+
+    /**
+     * @throws InvalidArgumentException When the stored amount is negative.
+     */
+    public function getGstAmount(): Money
+    {
+        return Money::fromCents($this->gstAmount);
+    }
+
+    /**
+     * @throws OrderNotFoundException When the order has not been saved.
+     */
+    public function getId(): int
+    {
+        return $this->orderId ?? throw OrderNotFoundException::unsaved();
+    }
+
+    /**
+     * @throws InvalidArgumentException When the stored amount is negative.
+     */
+    public function getTotal(): Money
+    {
+        return Money::fromCents($this->total);
+    }
 }

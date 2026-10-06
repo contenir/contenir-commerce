@@ -5,31 +5,34 @@ declare(strict_types=1);
 namespace Contenir\Commerce\Model\Repository;
 
 use Contenir\Commerce\Model\Entity\OrderItemEntity;
-use Contenir\Db\Model\Repository\AbstractRepository;
-use Laminas\Db\Sql\Select;
-use Laminas\Db\Sql\TableIdentifier;
+use Contenir\Db\Model\EntityManager;
+use Contenir\Db\Model\Exception\ExceptionInterface as DbModelException;
+use Contenir\Db\Model\Repository;
 
-class OrderItemRepository extends AbstractRepository
+/**
+ * @extends Repository<OrderItemEntity>
+ *
+ * @api
+ */
+final class OrderItemRepository extends Repository
 {
-    /** @var string|array<string, string>|TableIdentifier */
-    protected TableIdentifier|string|array|null $table = 'gallery_order_item';
-
     /**
-     * @param iterable<string, mixed> $data
+     * @throws DbModelException When the entity mapping is invalid.
      */
-    public function create(iterable $data = []): OrderItemEntity
+    public function __construct(EntityManager $em)
     {
-        return new OrderItemEntity($data);
+        parent::__construct($em, OrderItemEntity::class);
     }
 
-    public function findOne(mixed $where = null, mixed $order = null, ?Select $select = null): ?OrderItemEntity
+    /**
+     * The lines of one order, in the order they were added.
+     *
+     * @return list<OrderItemEntity>
+     *
+     * @throws DbModelException
+     */
+    public function findByOrderId(int $orderId): array
     {
-        foreach ($this->find($where, $order, $select) as $entity) {
-            if ($entity instanceof OrderItemEntity) {
-                return $entity;
-            }
-        }
-
-        return null;
+        return $this->findBy(['orderId' => $orderId], ['orderItemId' => 'ASC']);
     }
 }

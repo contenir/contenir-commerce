@@ -4,91 +4,119 @@ declare(strict_types=1);
 
 namespace Contenir\Commerce\Model\Repository;
 
+use Contenir\Commerce\Artwork\ArtworkStatus;
+use Contenir\Commerce\Artwork\ItemType;
 use Contenir\Commerce\Model\Entity\ArtworkEntity;
-use Contenir\Db\Model\Repository\AbstractRepository;
-use Laminas\Db\Sql\Select;
-use Laminas\Db\Sql\TableIdentifier;
+use Contenir\Db\Model\EntityManager;
+use Contenir\Db\Model\Exception\ExceptionInterface as DbModelException;
+use Contenir\Db\Model\Repository;
 
-class ArtworkRepository extends AbstractRepository
+/**
+ * Finders for artworks, including the gallery listings keyed by the
+ * artwork's resource id.
+ *
+ * @extends Repository<ArtworkEntity>
+ *
+ * @api
+ */
+final class ArtworkRepository extends Repository
 {
-    /** @var string|array<string, string>|TableIdentifier */
-    protected TableIdentifier|string|array|null $table = 'artwork';
-
     /**
-     * @param iterable<string, mixed> $data
+     * @throws DbModelException When the entity mapping is invalid.
      */
-    public function create(iterable $data = []): ArtworkEntity
+    public function __construct(EntityManager $em)
     {
-        return new ArtworkEntity($data);
-    }
-
-    public function findOne(mixed $where = null, mixed $order = null, ?Select $select = null): ?ArtworkEntity
-    {
-        foreach ($this->find($where, $order, $select) as $entity) {
-            if ($entity instanceof ArtworkEntity) {
-                return $entity;
-            }
-        }
-
-        return null;
+        parent::__construct($em, ArtworkEntity::class);
     }
 
     /**
-     * @param list<int> $resourceIds
-     * @return array<int, ArtworkEntity> keyed by resource_id
-     */
-    public function findByResourceIds(array $resourceIds): array
-    {
-        if ($resourceIds === []) {
-            return [];
-        }
-
-        return $this->mapByResourceId(['resource_id' => $resourceIds]);
-    }
-
-    /**
-     * @return array<int, ArtworkEntity> keyed by resource_id
-     */
-    public function findByExhibitionResourceId(int $exhibitionResourceId): array
-    {
-        return $this->mapByResourceId(['exhibition_resource_id' => $exhibitionResourceId]);
-    }
-
-    /**
-     * @return array<int, ArtworkEntity> keyed by resource_id
-     */
-    public function findByArtistResourceId(int $artistResourceId): array
-    {
-        return $this->mapByResourceId(['artist_resource_id' => $artistResourceId]);
-    }
-
-    /**
-     * Ongoing works from selected artists — available originals that are not
+     * Ongoing works from selected artists: available originals that are not
      * part of any exhibition.
      *
-     * @return array<int, ArtworkEntity> keyed by resource_id
+     * @return array<int, ArtworkEntity> keyed by resource id
+     *
+     * @throws DbModelException
      */
     public function findAvailableOngoing(): array
     {
         return $this->mapByResourceId([
-            'exhibition_resource_id' => null,
-            'item_type'              => 'artwork',
-            'status'                 => 'available',
+            'exhibitionResourceId' => null,
+            'itemType'             => ItemType::Artwork,
+            'status'               => ArtworkStatus::Available,
         ]);
     }
 
     /**
-     * @param array<string, mixed> $where
-     * @return array<int, ArtworkEntity> keyed by resource_id
+     * @return array<int, ArtworkEntity> keyed by resource id
+     *
+     * @throws DbModelException
      */
-    private function mapByResourceId(array $where): array
+    public function findByArtistResourceId(int $artistResourceId): array
+    {
+        return $this->mapByResourceId(['artistResourceId' => $artistResourceId]);
+    }
+
+    /**
+     * Every work in an exhibition, sold ones included (they keep a badge).
+     *
+     * @return array<int, ArtworkEntity> keyed by resource id
+     *
+     * @throws DbModelException
+     */
+    public function findByExhibitionResourceId(int $exhibitionResourceId): array
+    {
+        return $this->mapByResourceId(['exhibitionResourceId' => $exhibitionResourceId]);
+    }
+
+    /**
+     * @param list<int> $resourceIds
+     *
+     * @return array<int, ArtworkEntity> keyed by resource id
+     *
+     * @throws DbModelException
+     */
+    public function findByResourceIds(array $resourceIds): array
+    {
+        if ([] === $resourceIds) {
+            return [];
+        }
+
+        return $this->mapByResourceId(['resourceId' => $resourceIds]);
+    }
+
+    /**
+     * The artwork as currently stored, re-read even when this entity manager
+     * already holds it, so availability checks never act on a stale copy.
+     * Unsaved edits to that artwork are discarded.
+     *
+     * @throws DbModelException
+     */
+    public function findCurrent(int $artworkId): ?ArtworkEntity
+    {
+        $artwork = $this->find($artworkId);
+        if (null !== $artwork) {
+            $this->em->refresh($artwork);
+        }
+
+        return $artwork;
+    }
+
+    /**
+     * @param array<string, mixed> $criteria
+     *
+     * @return array<int, ArtworkEntity> keyed by resource id
+     *
+     * @throws DbModelException
+     */
+    private function mapByResourceId(array $criteria): array
     {
         $map = [];
-
-        foreach ($this->find($where) as $artwork) {
-            if ($artwork instanceof ArtworkEntity && $artwork->resource_id !== null) {
-                $map[(int) $artwork->resource_id] = $artwork;
+        foreach ($this->findBy($criteria) as $artwork) {
+            if (null === $artwork->resourceId) {
+                continue;
             }
+
+            $map[$artwork->resourceId] = $artwork;
         }
 
         return $map;

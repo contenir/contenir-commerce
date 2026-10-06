@@ -4,62 +4,80 @@ declare(strict_types=1);
 
 namespace Contenir\Commerce\Model\Entity;
 
-use Contenir\Commerce\Model\Repository\ArtistEnquiryFileRepository;
-use Contenir\Db\Model\Entity\AbstractEntity;
+use Contenir\Commerce\Enquiry\EnquiryStatus;
+use Contenir\Db\Model\Collection;
+use Contenir\Db\Model\Mapping\Column;
+use Contenir\Db\Model\Mapping\HasMany;
+use Contenir\Db\Model\Mapping\Id;
+use Contenir\Db\Model\Mapping\Table;
+use DateTimeImmutable;
 
 /**
- * @property int $artist_enquiry_id
- * @property string $name
- * @property string $email
- * @property ?string $telephone
- * @property ?string $website
- * @property ?string $instagram
- * @property ?string $bio
- * @property ?string $statement
- * @property ?string $medium
- * @property ?string $preferred_timing
- * @property ?string $how_heard
- * @property string $status
- * @property ?string $staff_notes
- * @property ?string $created
- * @property ?string $updated
- * @property array<int, ArtistEnquiryFileEntity> $files
+ * A prospective artist's submission, reviewed by staff in the CMS.
+ *
+ * @api
+ *
+ * @mago-expect analysis:missing-constructor Entities are hydrated without their constructor; required columns
+ *     and relations stay uninitialised until they are assigned or loaded.
+ *
+ * @mago-expect lint:too-many-properties One property per column of the artist_enquiry table.
  */
-class ArtistEnquiryEntity extends AbstractEntity
+#[Table('artist_enquiry')]
+final class ArtistEnquiryEntity
 {
-    /** @var list<string> */
-    protected array $primaryKeys = [
-        'artist_enquiry_id',
-    ];
+    #[Id(generated: true)]
+    #[Column('artist_enquiry_id')]
+    public ?int $artistEnquiryId = null;
 
-    /** @var list<string> */
-    protected array $columns = [
-        'artist_enquiry_id',
-        'name',
-        'email',
-        'telephone',
-        'website',
-        'instagram',
-        'bio',
-        'statement',
-        'medium',
-        'preferred_timing',
-        'how_heard',
-        'status',
-        'staff_notes',
-        'created',
-        'updated',
-    ];
+    #[Column]
+    public string $name;
 
-    /** @var array<string, array<string, mixed>> */
-    protected array $relations = [
-        'files' => [
-            'type'   => AbstractEntity::RELATION_MANY,
-            'column' => ['artist_enquiry_id'],
-            'table'  => [
-                'class'  => ArtistEnquiryFileRepository::class,
-                'column' => ['artist_enquiry_id'],
-            ],
-        ],
-    ];
+    #[Column]
+    public string $email;
+
+    #[Column]
+    public ?string $telephone = null;
+
+    #[Column]
+    public ?string $website = null;
+
+    #[Column]
+    public ?string $instagram = null;
+
+    #[Column]
+    public ?string $bio = null;
+
+    #[Column]
+    public ?string $statement = null;
+
+    #[Column]
+    public ?string $medium = null;
+
+    #[Column('preferred_timing')]
+    public ?string $preferredTiming = null;
+
+    #[Column('how_heard')]
+    public ?string $howHeard = null;
+
+    #[Column]
+    public EnquiryStatus $status = EnquiryStatus::NewEnquiry;
+
+    #[Column('staff_notes')]
+    public ?string $staffNotes = null;
+
+    #[Column]
+    public ?DateTimeImmutable $created = null;
+
+    #[Column]
+    public ?DateTimeImmutable $updated = null;
+
+    /**
+     * @var Collection<ArtistEnquiryFileEntity>
+     */
+    #[HasMany(
+        ArtistEnquiryFileEntity::class,
+        foreignKey: 'artist_enquiry_id',
+        orderBy: ['artist_enquiry_file_id' => 'ASC'],
+    )]
+    public Collection $files;
 }

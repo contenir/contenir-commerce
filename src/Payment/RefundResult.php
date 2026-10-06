@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace Contenir\Commerce\Payment;
 
-final class RefundResult
+/**
+ * @api
+ */
+final readonly class RefundResult
 {
     public function __construct(
-        public readonly string $id,
-        public readonly string $status
-    ) {
-    }
+        public string $id,
+        public string $status,
+    ) {}
 }
