@@ -7,6 +7,7 @@ namespace Contenir\Commerce\Tests\Unit\Money;
 use Contenir\Commerce\Exception\InvalidArgumentException;
 use Contenir\Commerce\Exception\OverflowException;
 use Contenir\Commerce\Money\Money;
+use Contenir\Commerce\Money\TaxRate;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
@@ -79,6 +80,34 @@ final class MoneyTest extends TestCase
             'by one'              => [1_000, 1, 1_000],
             'by zero'             => [1_000, 0, 0],
             'up to the int limit' => [intdiv(PHP_INT_MAX, num2: 2), 2, PHP_INT_MAX - 1],
+        ];
+    }
+
+    /**
+     * Inclusive tax at other rates, with the exact result worked out as a
+     * fraction and rounded half up.
+     *
+     * @return array<string, array{int, int|float, int}>
+     */
+    public static function taxProvider(): array
+    {
+        return [
+            'no tax'                            => [185_000, 0, 0],
+            'no tax on the largest amount'      => [PHP_INT_MAX, 0, 0],
+            'GST passed explicitly'             => [185_000, 10, 16_818],
+            'GST on the largest amount'         => [PHP_INT_MAX, 10, 838_488_366_986_797_801],
+            'NZ GST, exact'                     => [115, 15, 15],
+            'NZ GST, rounded down'              => [23, 15, 3],
+            'VAT, a tie rounds up'              => [3, 20, 1],
+            'VAT, a larger tie rounds up'       => [9, 20, 2],
+            'VAT, exact'                        => [6, 20, 1],
+            'a fractional rate'                 => [9, 12.5, 1],
+            'a rate rounded to a part'          => [1_000_000_000, 0.57, 5_667_694],
+            'one part per million, no overflow' => [PHP_INT_MAX, 0.0001, 9_223_362_813_492],
+            'all tax, one cent'                 => [1, 100, 1],
+            'all tax, two cents'                => [2, 100, 1],
+            'all tax, a tie rounds up'          => [3, 100, 2],
+            'all tax, the largest amount'       => [PHP_INT_MAX, 100, 4_611_686_018_427_387_904],
         ];
     }
 
@@ -192,6 +221,13 @@ final class MoneyTest extends TestCase
                 Money::fromCents(250)->subtract(Money::fromCents(250))->amount,
             ],
         );
+    }
+
+    #[DataProvider('taxProvider')]
+    #[Test]
+    public function taxAtAGivenRateIsExactAndRoundsHalfUp(int $amount, int|float $percent, int $tax): void
+    {
+        static::assertSame($tax, Money::fromCents($amount)->gstComponent(TaxRate::fromPercent($percent))->amount);
     }
 
     #[Test]

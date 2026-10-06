@@ -98,4 +98,10 @@ final class EntityAccessorsTest extends TestCase
             ],
         );
     }
+
+    #[Test]
+    public function theDefaultArtworkHasNoTitleOfItsOwn(): void
+    {
+        static::assertNull(CommerceFactory::artwork()->getTitle());
+    }
 }

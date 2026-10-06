@@ -21,11 +21,13 @@ use PHPUnit\Framework\TestCase;
 use Stripe\ApiRequestor;
 use Stripe\Exception\ApiErrorException;
 use Stripe\Exception\InvalidArgumentException as StripeInvalidArgumentException;
+use Stripe\Exception\InvalidRequestException;
 use Stripe\HttpClient\CurlClient;
 use Stripe\StripeClient;
 
 use function array_filter;
 use function array_values;
+use function count;
 use function str_starts_with;
 
 /**
@@ -54,6 +56,18 @@ final class StripeGatewayTest extends TestCase
     }
 
     /**
+     * @return array<string, array{array<string, mixed>}>
+     */
+    public static function settledSessionProvider(): array
+    {
+        return [
+            'complete and paid' => [['status' => 'complete', 'payment_status' => 'paid', 'payment_intent' => 'pi_1']],
+            'complete, unpaid'  => [['status' => 'complete', 'payment_status' => 'unpaid', 'payment_intent' => 'pi_1']],
+            'expired already'   => [['status' => 'expired']],
+        ];
+    }
+
+    /**
      * @return array<string, array{callable(StripeGateway): mixed, string}>
      */
     public static function stripeErrorProvider(): array
@@ -74,6 +88,10 @@ final class StripeGatewayTest extends TestCase
             'refund'   => [
                 static fn(StripeGateway $gateway): mixed => $gateway->refund('pi_test_456'),
                 'Unable to refund Stripe payment',
+            ],
+            'expire'   => [
+                static fn(StripeGateway $gateway): mixed => $gateway->expireCheckoutSession('cs_test_123'),
+                'Unable to expire Stripe checkout session',
             ],
         ];
     }
@@ -137,11 +155,91 @@ final class StripeGatewayTest extends TestCase
     }
 
     #[Test]
+    public function aRefusedExpiryOfASessionStillOpenFails(): void
+    {
+        $this->http->queueResponse($this->notOpenError(), 400);
+        $this->queueSession(['status' => 'open']);
+
+        try {
+            $this->gateway->expireCheckoutSession('cs_test_123');
+            static::fail('Expected PaymentFailedException');
+        } catch (PaymentFailedException $e) {
+            static::assertSame(
+                ['Unable to expire Stripe checkout session', InvalidRequestException::class],
+                [$e->getMessage(), $e->getPrevious()::class],
+            );
+        }
+    }
+
+    #[Test]
+    public function aRefusedExpiryWhoseSessionCannotBeReadFailsOnTheRead(): void
+    {
+        $this->http->queueResponse($this->notOpenError(), 400);
+        $this->http->queueResponse(['error' => [
+            'message' => 'No such session',
+            'type'    => 'invalid_request_error',
+        ]], 404);
+
+        $this->expectException(PaymentFailedException::class);
+        $this->expectExceptionMessage('Unable to retrieve Stripe checkout session');
+
+        $this->gateway->expireCheckoutSession('cs_test_123');
+    }
+
+    /**
+     * @param array<string, mixed> $fields
+     */
+    #[DataProvider('settledSessionProvider')]
+    #[Test]
+    public function aSessionThatCanNoLongerBeExpiredIsReturnedAsItIs(array $fields): void
+    {
+        $this->http->queueResponse($this->notOpenError(), 400);
+        $this->queueSession($fields);
+
+        $session = $this->gateway->expireCheckoutSession('cs_test_123');
+
+        static::assertEquals(
+            [
+                new CheckoutSession(
+                    'cs_test_123',
+                    $fields['status'],
+                    null,
+                    $fields['payment_intent'] ?? null,
+                    null,
+                    $fields['payment_status'] ?? 'unpaid',
+                ),
+                'get',
+                'https://api.stripe.com/v1/checkout/sessions/cs_test_123',
+            ],
+            [$session, $this->http->requests[1]['method'], $this->http->requests[1]['url']],
+        );
+    }
+
+    #[Test]
     public function aSessionWithoutAStatusMapsToAnEmptyStatus(): void
     {
         $this->queueSession(['status' => null]);
 
         static::assertSame('', $this->gateway->retrieveCheckoutSession('cs_test_123')->status);
+    }
+
+    #[Test]
+    public function chargesInTheConfiguredCurrencyInLowerCase(): void
+    {
+        $this->queueSession(['status' => 'open']);
+        $gateway = new StripeGateway(
+            new StripeClient('sk_test_fake'),
+            new FixedClock(new DateTimeImmutable('2026-08-20T10:00:00+10:00')),
+            'NZD',
+        );
+
+        $gateway->createCheckoutSession(new CheckoutRequest(
+            [new CheckoutLineItem('Tote bag', Money::fromCents(3_500))],
+            'https://example.test/thanks',
+            'https://example.test/cart',
+        ));
+
+        static::assertSame('nzd', $this->http->requests[0]['params']['line_items'][0]['price_data']['currency']);
     }
 
     #[Test]
@@ -191,6 +289,24 @@ final class StripeGatewayTest extends TestCase
                 $this->http->requests[0]['method'],
                 $this->http->requests[0]['url'],
                 $this->http->requests[0]['params'],
+            ],
+        );
+    }
+
+    #[Test]
+    public function expiresAnOpenSession(): void
+    {
+        $this->queueSession(['status' => 'expired']);
+
+        $session = $this->gateway->expireCheckoutSession('cs_test_123');
+
+        static::assertSame(
+            ['expired', 'post', 'https://api.stripe.com/v1/checkout/sessions/cs_test_123/expire', 1],
+            [
+                $session->status,
+                $this->http->requests[0]['method'],
+                $this->http->requests[0]['url'],
+                count($this->http->requests),
             ],
         );
     }
@@ -323,6 +439,17 @@ final class StripeGatewayTest extends TestCase
             $this->http->requests[0]['headers'],
             static fn(string $header): bool => str_starts_with($header, 'Idempotency-Key:'),
         ));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function notOpenError(): array
+    {
+        return ['error' => [
+            'message' => 'Only Checkout Sessions with a status in ["open"] can be expired.',
+            'type'    => 'invalid_request_error',
+        ]];
     }
 
     /**

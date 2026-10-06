@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Contenir\Commerce\Order;
 
 /**
- * What OrderManager::completeFromCheckoutSession() did.
+ * What CompletionService::completeFromCheckoutSession() did.
  *
  * @api
  */

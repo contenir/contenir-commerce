@@ -6,6 +6,9 @@ namespace Contenir\Commerce\Tests\TestAsset\Database;
 
 /**
  * The commerce tables in SQLite form, with the columns the entities map.
+ * Three extra columns (artwork.title, gallery_order.gift_message and
+ * gallery_order_item.edition_note) stand for a site's own columns; only the
+ * site entities in TestAsset\Entity map them.
  *
  * The two child tables carry an index on (parent id, a text column), as a
  * production schema might, so that an unordered lookup by parent returns
@@ -24,7 +27,8 @@ final class Schema
                 artwork_id INTEGER PRIMARY KEY AUTOINCREMENT, resource_id INTEGER, artist_resource_id INTEGER,
                 exhibition_resource_id INTEGER, item_type TEXT NOT NULL DEFAULT \'artwork\',
                 price INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT \'available\', medium TEXT,
-                dimensions TEXT, year TEXT, edition_details TEXT, external_sale_url TEXT, created TEXT, updated TEXT
+                dimensions TEXT, year TEXT, edition_details TEXT, external_sale_url TEXT, created TEXT, updated TEXT,
+                title TEXT
             )',
             'CREATE TABLE gallery_order (
                 order_id INTEGER PRIMARY KEY AUTOINCREMENT, order_ref TEXT NOT NULL, customer_name TEXT,
@@ -32,11 +36,12 @@ final class Schema
                 total INTEGER NOT NULL DEFAULT 0, gst_amount INTEGER NOT NULL DEFAULT 0,
                 stripe_checkout_session_id TEXT, stripe_payment_intent_id TEXT, customer_notes TEXT,
                 staff_notes TEXT, paid_at TEXT, collected_at TEXT, refunded_at TEXT, cancelled_at TEXT,
-                created TEXT, updated TEXT
+                created TEXT, updated TEXT, gift_message TEXT
             )',
             'CREATE TABLE gallery_order_item (
                 order_item_id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL, artwork_id INTEGER,
-                title TEXT NOT NULL, artist_name TEXT, price INTEGER NOT NULL DEFAULT 0, created TEXT
+                title TEXT NOT NULL, artist_name TEXT, price INTEGER NOT NULL DEFAULT 0, created TEXT,
+                edition_note TEXT
             )',
             'CREATE INDEX gallery_order_item_order ON gallery_order_item (order_id, title)',
             'CREATE TABLE artist_enquiry (

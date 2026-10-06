@@ -9,7 +9,8 @@ use Psr\Container\ContainerExceptionInterface;
 use Psr\Container\ContainerInterface;
 
 /**
- * Fetches a container service and checks its type.
+ * Fetches a container service, by its type or by a configured name, and
+ * checks its type.
  *
  * @internal
  */
@@ -19,6 +20,7 @@ final class ServiceLocator
      * @template T of object
      *
      * @param class-string<T> $type
+     * @param string|null     $name the service name, when it is not the type
      *
      * @return T
      *
@@ -27,14 +29,15 @@ final class ServiceLocator
      *
      * @mago-expect analysis:mixed-assignment Container services are untyped; the type is checked here.
      */
-    public static function get(ContainerInterface $container, string $type): object
+    public static function get(ContainerInterface $container, string $type, ?string $name = null): object
     {
-        $service = $container->get($type);
+        $name    ??= $type;
+        $service = $container->get($name);
 
         return $service instanceof $type
             ? $service
             : throw ConfigurationException::invalidService(
-                $type,
+                $name,
                 $type,
                 $service,
             );

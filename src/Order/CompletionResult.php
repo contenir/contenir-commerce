@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Contenir\Commerce\Order;
 
-use Contenir\Commerce\Model\Entity\OrderEntity;
+use Contenir\Commerce\Model\Entity\AbstractOrderEntity;
 
 /**
  * @api
@@ -16,7 +16,7 @@ final readonly class CompletionResult
      *     another buyer when the outcome is RefundedRace
      */
     public function __construct(
-        public OrderEntity $order,
+        public AbstractOrderEntity $order,
         public CompletionOutcome $outcome,
         public array $unavailableTitles = [],
     ) {}

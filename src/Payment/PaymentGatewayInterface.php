@@ -22,6 +22,19 @@ interface PaymentGatewayInterface
     public function createCheckoutSession(CheckoutRequest $request): CheckoutSession;
 
     /**
+     * Expires an open checkout session so that it can no longer be paid,
+     * and returns the session as it then stands (status "expired").
+     *
+     * A session that is already complete or expired cannot be expired. It
+     * is returned as it is, without an error, and the caller decides from
+     * its status and payment status what that means: a complete session
+     * may already have been paid.
+     *
+     * @throws PaymentFailedException When the provider cannot be reached or refuses for any other reason.
+     */
+    public function expireCheckoutSession(string $sessionId): CheckoutSession;
+
+    /**
      * A null amount refunds the full payment. Requests repeated with the same
      * idempotency key refund at most once.
      *

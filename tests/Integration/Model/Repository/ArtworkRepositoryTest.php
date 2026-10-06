@@ -9,9 +9,15 @@ use Contenir\Commerce\Artwork\ItemType;
 use Contenir\Commerce\Model\Entity\ArtworkEntity;
 use Contenir\Commerce\Model\Repository\ArtworkRepository;
 use Contenir\Commerce\Tests\Trait\SqliteDatabaseTrait;
+use Contenir\Db\Model\Exception\PersistenceException;
+use Contenir\Db\Model\Type\TypeRegistry;
 use DateTimeImmutable;
 use Override;
+use PhpDb\Adapter\AdapterInterface;
+use PhpDb\Adapter\Driver\DriverInterface;
+use PhpDb\Adapter\Driver\StatementInterface;
 use PhpDb\Adapter\Profiler\Profiler;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -27,6 +33,74 @@ final class ArtworkRepositoryTest extends TestCase
 
     private ArtworkRepository $repository;
 
+    /**
+     * @return array<string, array{int}>
+     */
+    public static function unclaimableProvider(): array
+    {
+        return [
+            'already sold'   => [2],
+            'never existed'  => [999],
+            'deleted (id 0)' => [0],
+        ];
+    }
+
+    #[Test]
+    public function aClaimLeavesTheManagedEntityForFindCurrentToReread(): void
+    {
+        $held = $this->repository->find(1);
+
+        $this->repository->claim(1, new DateTimeImmutable('2026-08-20 10:20:00'));
+
+        static::assertSame(
+            [ArtworkStatus::Available, ArtworkStatus::Sold],
+            [$held?->status, $this->repository->findCurrent(1)?->status],
+        );
+    }
+
+    #[Test]
+    public function aClaimSellsAnAvailableWorkExactlyOnce(): void
+    {
+        $at = new DateTimeImmutable('2026-08-20 10:20:00');
+
+        static::assertSame(
+            [true, false, ['status' => 'sold', 'updated' => '2026-08-20 10:20:00']],
+            [
+                $this->repository->claim(1, $at),
+                $this->repository->claim(1, $at),
+                $this->statusAndUpdated(1),
+            ],
+        );
+    }
+
+    #[Test]
+    public function aClaimTheDriverReturnsNoResultForIsAnError(): void
+    {
+        $statement = static::createStub(StatementInterface::class);
+        $statement->method('execute')->willReturn(null);
+        $driver = static::createStub(DriverInterface::class);
+        $driver->method('createStatement')->willReturn($statement);
+        $adapter = static::createStub(AdapterInterface::class);
+        $adapter->method('getDriver')->willReturn($driver);
+        $adapter->method('getPlatform')->willReturn($this->adapter->getPlatform());
+
+        $this->expectException(PersistenceException::class);
+        $this->expectExceptionMessage('The database driver returned no result for a write statement');
+
+        (new ArtworkRepository($this->em, $adapter, TypeRegistry::withDefaults()))->claim(
+            1,
+            new DateTimeImmutable('2026-08-20 10:20:00'),
+        );
+    }
+
+    #[Test]
+    public function aClaimTouchesOnlyItsOwnWork(): void
+    {
+        $this->repository->claim(1, new DateTimeImmutable('2026-08-20 10:20:00'));
+
+        static::assertSame(['status' => 'available', 'updated' => null], $this->statusAndUpdated(3));
+    }
+
     #[Test]
     public function anEmptyResourceIdListRunsNoQuery(): void
     {
@@ -40,6 +114,13 @@ final class ArtworkRepositoryTest extends TestCase
     public function availableOngoingWorksExcludeExhibitedSoldRetailAndUnlinkedRows(): void
     {
         static::assertSame([103], array_keys($this->repository->findAvailableOngoing()));
+    }
+
+    #[DataProvider('unclaimableProvider')]
+    #[Test]
+    public function aWorkThatIsNotAvailableCannotBeClaimed(int $artworkId): void
+    {
+        static::assertFalse($this->repository->claim($artworkId, new DateTimeImmutable('2026-08-20 10:20:00')));
     }
 
     #[Test]
@@ -147,7 +228,7 @@ final class ArtworkRepositoryTest extends TestCase
     protected function setUp(): void
     {
         $this->setUpDatabase();
-        $this->repository = new ArtworkRepository($this->em);
+        $this->repository = new ArtworkRepository($this->em, $this->adapter, TypeRegistry::withDefaults());
 
         $fixtures = [
             ['resource_id' => 101, 'artist_resource_id' => 11, 'exhibition_resource_id' => 51, 'status' => 'available'],
@@ -177,5 +258,15 @@ final class ArtworkRepositoryTest extends TestCase
         foreach ($fixtures as $fixture) {
             $this->insert('artwork', [...$fixture, 'price' => 100_000]);
         }
+    }
+
+    /**
+     * @return array{status: mixed, updated: mixed}
+     */
+    private function statusAndUpdated(int $artworkId): array
+    {
+        $row = $this->row('artwork', 'artwork_id', $artworkId);
+
+        return ['status' => $row['status'], 'updated' => $row['updated']];
     }
 }

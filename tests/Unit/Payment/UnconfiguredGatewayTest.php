@@ -33,6 +33,9 @@ final class UnconfiguredGatewayTest extends TestCase
             'retrieve session'        => [
                 static fn(UnconfiguredGateway $gateway): mixed => $gateway->retrieveCheckoutSession('cs_x'),
             ],
+            'expire session'          => [
+                static fn(UnconfiguredGateway $gateway): mixed => $gateway->expireCheckoutSession('cs_x'),
+            ],
             'refund'                  => [
                 static fn(UnconfiguredGateway $gateway): mixed => $gateway->refund('pi_x'),
             ],

@@ -28,18 +28,42 @@ final class FakePaymentGateway implements PaymentGatewayInterface
     public array $checkoutRequests = [];
 
     /**
+     * @var list<string>
+     */
+    public array $expirations = [];
+
+    /**
      * @var list<array{paymentIntentId: string, amount: ?int, idempotencyKey: ?string}>
      */
     public array $refunds = [];
 
     public int $retrievals = 0;
 
+    private bool $failExpiries = false;
+
     private bool $failRefunds = false;
+
+    /**
+     * @var (callable(): void)|null
+     */
+    private $beforeNextRetrieval;
 
     /**
      * @var array<string, CheckoutSession>
      */
     private array $sessions = [];
+
+    /**
+     * Run $hook once, at the start of the next session retrieval: the moment
+     * a completion has read its order but not yet claimed its works. Lets a
+     * test interleave a second completion there.
+     *
+     * @param callable(): void $hook
+     */
+    public function beforeNextRetrieval(callable $hook): void
+    {
+        $this->beforeNextRetrieval = $hook;
+    }
 
     /**
      * Mark a session complete and paid, as Stripe does after a card payment.
@@ -66,7 +90,7 @@ final class FakePaymentGateway implements PaymentGatewayInterface
 
         $this->sessions[$id] = new CheckoutSession(
             $id,
-            'open',
+            CheckoutSession::STATUS_OPEN,
             sprintf('https://checkout.stripe.test/pay/%s', $id),
             null,
             $request->customerEmail,
@@ -74,6 +98,38 @@ final class FakePaymentGateway implements PaymentGatewayInterface
         );
 
         return $this->sessions[$id];
+    }
+
+    /**
+     * Expire an open session, as Stripe does; a complete or expired one is
+     * returned unchanged.
+     */
+    #[Override]
+    public function expireCheckoutSession(string $sessionId): CheckoutSession
+    {
+        if ($this->failExpiries) {
+            throw PaymentFailedException::fromProvider('expire Stripe checkout session', new RuntimeException('down'));
+        }
+
+        $this->expirations[] = $sessionId;
+        $session             = $this->session($sessionId);
+        if (! $session->isOpen()) {
+            return $session;
+        }
+
+        return $this->sessions[$sessionId] = new CheckoutSession(
+            $sessionId,
+            CheckoutSession::STATUS_EXPIRED,
+            null,
+            null,
+            $session->customerEmail,
+            $session->paymentStatus,
+        );
+    }
+
+    public function failExpiries(): void
+    {
+        $this->failExpiries = true;
     }
 
     public function failRefunds(): void
@@ -105,6 +161,17 @@ final class FakePaymentGateway implements PaymentGatewayInterface
     {
         ++$this->retrievals;
 
+        $hook                      = $this->beforeNextRetrieval;
+        $this->beforeNextRetrieval = null;
+        if (null !== $hook) {
+            $hook();
+        }
+
+        return $this->session($sessionId);
+    }
+
+    private function session(string $sessionId): CheckoutSession
+    {
         return (
             $this->sessions[$sessionId] ?? throw PaymentFailedException::fromProvider(
                 'retrieve Stripe checkout session',

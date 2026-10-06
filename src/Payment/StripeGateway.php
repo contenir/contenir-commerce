@@ -4,30 +4,36 @@ declare(strict_types=1);
 
 namespace Contenir\Commerce\Payment;
 
+use Contenir\Commerce\Config\CommerceSettings;
 use Contenir\Commerce\Exception\PaymentFailedException;
 use Contenir\Commerce\Money\Money;
 use Override;
 use Psr\Clock\ClockInterface;
 use Stripe\Checkout\Session;
 use Stripe\Exception\ExceptionInterface as StripeException;
+use Stripe\Exception\InvalidRequestException;
 use Stripe\StripeClient;
 
 use function is_string;
+use function strtolower;
 
 /**
- * Stripe hosted Checkout in AUD. Every error stripe-php raises (API,
- * network, authentication, invalid argument) is rethrown as
- * PaymentFailedException with the Stripe exception as its previous.
+ * Stripe hosted Checkout in the site's currency (AUD by default). Every
+ * error stripe-php raises (API, network, authentication, invalid argument)
+ * is rethrown as PaymentFailedException with the Stripe exception as its
+ * previous.
  *
  * @api
  */
 final readonly class StripeGateway implements PaymentGatewayInterface
 {
-    private const string CURRENCY = 'aud';
-
+    /**
+     * @param string $currency the ISO 4217 code, normally CommerceSettings::$currency; sent in lower case
+     */
     public function __construct(
         private StripeClient $client,
         private ClockInterface $clock,
+        private string $currency = CommerceSettings::DEFAULT_CURRENCY,
     ) {}
 
     /**
@@ -61,6 +67,32 @@ final readonly class StripeGateway implements PaymentGatewayInterface
             $session = $this->client->checkout->sessions->create($params);
         } catch (StripeException $e) {
             throw PaymentFailedException::fromProvider('create Stripe checkout session', $e);
+        }
+
+        return $this->toCheckoutSession($session);
+    }
+
+    /**
+     * Stripe refuses to expire a session that is not open with an invalid
+     * request error. The session is then retrieved: one that is complete or
+     * expired is returned as it is, and one still open (the refusal had
+     * another cause) fails.
+     *
+     * @throws PaymentFailedException
+     */
+    #[Override]
+    public function expireCheckoutSession(string $sessionId): CheckoutSession
+    {
+        try {
+            $session = $this->client->checkout->sessions->expire($sessionId);
+        } catch (InvalidRequestException $e) {
+            $current = $this->retrieveCheckoutSession($sessionId);
+
+            return $current->isOpen()
+                ? throw PaymentFailedException::fromProvider('expire Stripe checkout session', $e)
+                : $current;
+        } catch (StripeException $e) {
+            throw PaymentFailedException::fromProvider('expire Stripe checkout session', $e);
         }
 
         return $this->toCheckoutSession($session);
@@ -133,7 +165,7 @@ final readonly class StripeGateway implements PaymentGatewayInterface
         return [
             'quantity'   => $item->quantity,
             'price_data' => [
-                'currency'     => self::CURRENCY,
+                'currency'     => strtolower($this->currency),
                 'unit_amount'  => $item->price->amount,
                 'product_data' => $productData,
             ],

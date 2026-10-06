@@ -6,34 +6,86 @@ namespace Contenir\Commerce\Model\Repository;
 
 use Contenir\Commerce\Artwork\ArtworkStatus;
 use Contenir\Commerce\Artwork\ItemType;
+use Contenir\Commerce\Model\Entity\AbstractArtworkEntity;
 use Contenir\Commerce\Model\Entity\ArtworkEntity;
 use Contenir\Db\Model\EntityManager;
 use Contenir\Db\Model\Exception\ExceptionInterface as DbModelException;
+use Contenir\Db\Model\Exception\PersistenceException;
 use Contenir\Db\Model\Repository;
+use Contenir\Db\Model\Type\TypeRegistry;
+use DateTimeImmutable;
+use PhpDb\Adapter\AdapterInterface;
+use PhpDb\Sql\Sql;
 
 /**
  * Finders for artworks, including the gallery listings keyed by the
- * artwork's resource id.
+ * artwork's resource id, and the atomic claim that sells a work once.
  *
- * @extends Repository<ArtworkEntity>
+ * The adapter must be the one the EntityManager runs on (contenir-db-model's
+ * "contenir_db_model.adapter" service), so that a claim joins the
+ * EntityManager's transaction, and the type registry the one it converts
+ * values with.
+ *
+ * @extends Repository<AbstractArtworkEntity>
  *
  * @api
  */
 final class ArtworkRepository extends Repository
 {
     /**
+     * @param class-string<AbstractArtworkEntity> $entityClass
+     *
      * @throws DbModelException When the entity mapping is invalid.
      */
-    public function __construct(EntityManager $em)
+    public function __construct(
+        EntityManager $em,
+        private readonly AdapterInterface $adapter,
+        private readonly TypeRegistry $types,
+        string $entityClass = ArtworkEntity::class,
+    ) {
+        parent::__construct($em, $entityClass);
+    }
+
+    /**
+     * Marks the work sold if, and only if, it is still available, in one
+     * conditional UPDATE whose affected-row count says whether this call
+     * won it. Of two buyers claiming the same work at the same instant
+     * exactly one succeeds, on SQLite, MySQL and PostgreSQL alike, without
+     * a row lock held across the read. A work that is sold, withdrawn or
+     * deleted cannot be claimed.
+     *
+     * Run it inside the EntityManager's transaction, so that rolling back
+     * releases the claim. An entity of this work the EntityManager already
+     * holds is not updated; findCurrent() re-reads it.
+     *
+     * @throws DbModelException
+     */
+    public function claim(int $artworkId, DateTimeImmutable $at): bool
     {
-        parent::__construct($em, ArtworkEntity::class);
+        $id      = $this->metadata->getField('artworkId');
+        $status  = $this->metadata->getField('status');
+        $updated = $this->metadata->getField('updated');
+        $sql     = new Sql($this->adapter);
+        $claim   = $sql->update($this->metadata->getTableIdentifier())
+            ->set([
+                $status->columnName  => $this->types->toDatabase($status, ArtworkStatus::Sold),
+                $updated->columnName => $this->types->toDatabase($updated, $at),
+            ])
+            ->where([
+                $id->columnName     => $artworkId,
+                $status->columnName => $this->types->toDatabase($status, ArtworkStatus::Available),
+            ]);
+
+        $result = $sql->prepareStatementForSqlObject($claim)->execute() ?? throw PersistenceException::noResult();
+
+        return 1 === $result->getAffectedRows();
     }
 
     /**
      * Ongoing works from selected artists: available originals that are not
      * part of any exhibition.
      *
-     * @return array<int, ArtworkEntity> keyed by resource id
+     * @return array<int, AbstractArtworkEntity> keyed by resource id
      *
      * @throws DbModelException
      */
@@ -47,7 +99,7 @@ final class ArtworkRepository extends Repository
     }
 
     /**
-     * @return array<int, ArtworkEntity> keyed by resource id
+     * @return array<int, AbstractArtworkEntity> keyed by resource id
      *
      * @throws DbModelException
      */
@@ -59,7 +111,7 @@ final class ArtworkRepository extends Repository
     /**
      * Every work in an exhibition, sold ones included (they keep a badge).
      *
-     * @return array<int, ArtworkEntity> keyed by resource id
+     * @return array<int, AbstractArtworkEntity> keyed by resource id
      *
      * @throws DbModelException
      */
@@ -71,7 +123,7 @@ final class ArtworkRepository extends Repository
     /**
      * @param list<int> $resourceIds
      *
-     * @return array<int, ArtworkEntity> keyed by resource id
+     * @return array<int, AbstractArtworkEntity> keyed by resource id
      *
      * @throws DbModelException
      */
@@ -91,7 +143,7 @@ final class ArtworkRepository extends Repository
      *
      * @throws DbModelException
      */
-    public function findCurrent(int $artworkId): ?ArtworkEntity
+    public function findCurrent(int $artworkId): ?AbstractArtworkEntity
     {
         $artwork = $this->find($artworkId);
         if (null !== $artwork) {
@@ -102,9 +154,17 @@ final class ArtworkRepository extends Repository
     }
 
     /**
+     * A new, unsaved entity of the class this repository hydrates.
+     */
+    public function newEntity(): AbstractArtworkEntity
+    {
+        return new $this->metadata->className();
+    }
+
+    /**
      * @param array<string, mixed> $criteria
      *
-     * @return array<int, ArtworkEntity> keyed by resource id
+     * @return array<int, AbstractArtworkEntity> keyed by resource id
      *
      * @throws DbModelException
      */

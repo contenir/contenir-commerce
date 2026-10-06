@@ -12,7 +12,10 @@ use Contenir\Commerce\Exception\InvalidTransitionException;
 use Contenir\Commerce\Exception\OrderNotFoundException;
 use Contenir\Commerce\Exception\OverflowException;
 use Contenir\Commerce\Exception\PaymentFailedException;
+use Contenir\Commerce\Exception\PurchaseItemMismatchException;
+use Contenir\Commerce\Money\Money;
 use Contenir\Commerce\Order\OrderStatus;
+use Contenir\Commerce\Order\PurchaseItem;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
@@ -36,6 +39,22 @@ final class ExceptionsTest extends TestCase
             'invalid service'        => [
                 ConfigurationException::invalidService('svc', 'Foo', 42),
                 'Service "svc" must be a Foo, got int',
+            ],
+            'invalid entity class'   => [
+                ConfigurationException::invalidEntityClass('contenir_commerce.order_entity', 'Foo', 'Bar'),
+                'Config "contenir_commerce.order_entity" must name an existing subclass of Bar, got "Foo"',
+            ],
+            'unknown repository'     => [
+                ConfigurationException::unknownRepository('Foo'),
+                'No repository "Foo" is built by this factory',
+            ],
+            'invalid string setting' => [
+                ConfigurationException::invalidSetting('contenir_commerce.currency', 'a currency code', 'AU'),
+                'Config "contenir_commerce.currency" must be a currency code, got "AU"',
+            ],
+            'invalid number setting' => [
+                ConfigurationException::invalidSetting('contenir_commerce.tax_rate', 'a percentage', 12.5),
+                'Config "contenir_commerce.tax_rate" must be a percentage, got 12.5',
             ],
             'invalid value'          => [
                 ConfigurationException::invalidValue('stripe.secret_key', 'a string', null),
@@ -77,11 +96,43 @@ final class ExceptionsTest extends TestCase
                 PaymentFailedException::notConfigured(),
                 'Stripe is not configured: set stripe.secret_key in local configuration',
             ],
+            'mispriced item'         => [
+                PurchaseItemMismatchException::forPrice(
+                    new PurchaseItem(7, 'Rip Tide', Money::fromCents(1_000)),
+                    Money::fromCents(185_000),
+                ),
+                '"Rip Tide" (artwork 7) is priced $1,850.00, not $10.00',
+            ],
+            'mistitled item'         => [
+                PurchaseItemMismatchException::forTitle(
+                    new PurchaseItem(7, 'Rip-tide', Money::fromCents(1_000)),
+                    'Rip Tide',
+                ),
+                'Artwork 7 is titled "Rip Tide", not "Rip-tide"',
+            ],
             'invalid argument'       => [
                 new InvalidArgumentException('bad'),
                 'bad',
             ],
         ];
+    }
+
+    #[Test]
+    public function aMismatchedItemExceptionNamesTheArtwork(): void
+    {
+        static::assertSame(
+            [7, 7],
+            [
+                PurchaseItemMismatchException::forPrice(
+                    new PurchaseItem(7, 'Rip Tide', Money::fromCents(1_000)),
+                    Money::fromCents(2_000),
+                )->getArtworkId(),
+                PurchaseItemMismatchException::forTitle(
+                    new PurchaseItem(7, 'Rip Tide', Money::fromCents(1_000)),
+                    'Rip-tide',
+                )->getArtworkId(),
+            ],
+        );
     }
 
     #[Test]

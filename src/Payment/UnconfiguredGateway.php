@@ -31,6 +31,15 @@ final class UnconfiguredGateway implements PaymentGatewayInterface
      * @throws PaymentFailedException Always.
      */
     #[Override]
+    public function expireCheckoutSession(string $sessionId): CheckoutSession
+    {
+        throw PaymentFailedException::notConfigured();
+    }
+
+    /**
+     * @throws PaymentFailedException Always.
+     */
+    #[Override]
     public function refund(
         string $paymentIntentId,
         ?Money $amount = null,
