@@ -14,7 +14,10 @@ use Contenir\Commerce\Model\Repository\OrderItemRepository;
 use Contenir\Commerce\Model\Repository\OrderRepository;
 use Contenir\Commerce\Module;
 use Contenir\Commerce\Money\Money;
+use Contenir\Commerce\Order\CheckoutService;
+use Contenir\Commerce\Order\CompletionService;
 use Contenir\Commerce\Order\CustomerDetails;
+use Contenir\Commerce\Order\FulfilmentService;
 use Contenir\Commerce\Order\OrderManager;
 use Contenir\Commerce\Order\PurchaseItem;
 use Contenir\Commerce\Payment\PaymentGatewayInterface;
@@ -55,6 +58,9 @@ final class ContainerWiringTest extends TestCase
             'artist enquiry files' => [ArtistEnquiryFileRepository::class],
             'email log'            => [EmailLogRepository::class],
             'order manager'        => [OrderManager::class],
+            'checkout service'     => [CheckoutService::class],
+            'completion service'   => [CompletionService::class],
+            'fulfilment service'   => [FulfilmentService::class],
         ];
     }
 
