@@ -9,6 +9,7 @@ use Contenir\Commerce\Exception\InvalidArgumentException;
 use function is_finite;
 use function round;
 use function sprintf;
+use function var_export;
 
 /**
  * A tax rate held as an integer number of parts per million of the
@@ -44,7 +45,7 @@ final readonly class TaxRate
             throw new InvalidArgumentException(sprintf(
                 'A tax rate must be a percentage from 0 to %d, got %s',
                 self::MAX_PERCENT,
-                $percent,
+                var_export($percent, true),
             ));
         }
 

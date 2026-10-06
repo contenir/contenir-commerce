@@ -10,6 +10,7 @@ use Throwable;
 use function get_debug_type;
 use function is_string;
 use function sprintf;
+use function var_export;
 
 /**
  * The application configuration, or a container service it names, is not
@@ -44,7 +45,12 @@ final class ConfigurationException extends SplInvalidArgumentException implement
         ?Throwable $previous = null,
     ): self {
         return new self(
-            sprintf('Config "%s" must be %s, got %s', $key, $expected, is_string($value) ? "\"{$value}\"" : $value),
+            sprintf(
+                'Config "%s" must be %s, got %s',
+                $key,
+                $expected,
+                is_string($value) ? "\"{$value}\"" : var_export($value, true),
+            ),
             0,
             $previous,
         );
