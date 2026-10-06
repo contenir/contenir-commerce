@@ -6,16 +6,17 @@ namespace Contenir\Commerce\Order;
 
 use Contenir\Commerce\Exception\ArtworkUnavailableException;
 use Contenir\Commerce\Exception\InvalidArgumentException;
-use Contenir\Commerce\Model\Entity\AbstractArtworkEntity;
 use Contenir\Commerce\Model\Repository\ArtworkRepository;
 use Contenir\Db\Model\Exception\ExceptionInterface as DbModelException;
+use DateTimeImmutable;
 
 use function in_array;
 use function sprintf;
 
 /**
- * Availability of the works in an order, always read from the database:
- * each original can be sold once, so a work may appear in an order once.
+ * Availability of the works in an order, always read from the database,
+ * and the claim that sells them: each original can be sold once, so a work
+ * may appear in an order once.
  *
  * @internal
  */
@@ -33,7 +34,15 @@ final readonly class ArtworkReservation
      */
     public function assertAvailable(array $items): void
     {
-        $lost = $this->checkAvailability($items)['lost'];
+        $lost = [];
+        foreach ($items as $item) {
+            if (true === $this->artworks->findCurrent($item->artworkId)?->isAvailable()) {
+                continue;
+            }
+
+            $lost[] = $item->title;
+        }
+
         if ([] !== $lost) {
             throw ArtworkUnavailableException::forTitles($lost);
         }
@@ -57,30 +66,44 @@ final readonly class ArtworkReservation
     }
 
     /**
-     * Reads each item's artwork as currently stored and splits the items
-     * into the available artworks and the titles that are no longer
-     * available (sold, withdrawn or deleted).
+     * Claims each work with its own conditional update and returns the
+     * titles that could not be claimed: sold to another buyer first,
+     * withdrawn or deleted. Claims that succeeded stay in place, so the
+     * caller runs this in a transaction and rolls it back when any title is
+     * returned.
      *
      * @param list<PurchaseItem> $items
      *
-     * @return array{available: list<AbstractArtworkEntity>, lost: list<string>}
+     * @return list<string>
      *
      * @throws DbModelException
      */
-    public function checkAvailability(array $items): array
+    public function claim(array $items, DateTimeImmutable $at): array
     {
-        $available = [];
-        $lost      = [];
+        $lost = [];
         foreach ($items as $item) {
-            $artwork = $this->artworks->findCurrent($item->artworkId);
-            if (null !== $artwork && $artwork->isAvailable()) {
-                $available[] = $artwork;
+            if ($this->artworks->claim($item->artworkId, $at)) {
                 continue;
             }
 
             $lost[] = $item->title;
         }
 
-        return ['available' => $available, 'lost' => $lost];
+        return $lost;
+    }
+
+    /**
+     * Re-reads each work, so that entities the EntityManager already holds
+     * reflect a claim committed behind them.
+     *
+     * @param list<PurchaseItem> $items
+     *
+     * @throws DbModelException
+     */
+    public function refresh(array $items): void
+    {
+        foreach ($items as $item) {
+            $this->artworks->findCurrent($item->artworkId);
+        }
     }
 }

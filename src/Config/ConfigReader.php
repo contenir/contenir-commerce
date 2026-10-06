@@ -71,17 +71,12 @@ final readonly class ConfigReader
         throw ConfigurationException::invalidEntityClass($this->key($key), $value, $baseClass);
     }
 
-    private function key(string $key): string
-    {
-        return "{$this->section}.{$key}";
-    }
-
     /**
      * @throws ConfigurationException When the value is not a string.
      *
      * @mago-expect analysis:mixed-assignment Config values are untyped; the type is checked here.
      */
-    private function string(string $key, string $default): string
+    public function string(string $key, string $default): string
     {
         $value = $this->values[$key] ?? $default;
         if (is_string($value)) {
@@ -89,5 +84,10 @@ final readonly class ConfigReader
         }
 
         throw ConfigurationException::invalidValue($this->key($key), 'a string', $value);
+    }
+
+    private function key(string $key): string
+    {
+        return "{$this->section}.{$key}";
     }
 }

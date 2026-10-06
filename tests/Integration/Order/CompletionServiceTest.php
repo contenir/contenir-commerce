@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Contenir\Commerce\Tests\Integration\Order;
 
+use Contenir\Commerce\Artwork\ArtworkStatus;
 use Contenir\Commerce\Exception\OrderNotFoundException;
 use Contenir\Commerce\Exception\PaymentFailedException;
 use Contenir\Commerce\Order\CompletionOutcome;
@@ -233,6 +234,18 @@ final class CompletionServiceTest extends TestCase
                 $this->gateway->refunds,
             ],
         );
+    }
+
+    #[Test]
+    public function completingUpdatesArtworksTheEntityManagerAlreadyHolds(): void
+    {
+        $held = $this->artworks->find(1);
+        $this->checkedOutOrder();
+        $this->gateway->completeSession('cs_fake_1', 'pi_fake_1');
+
+        $this->completion->completeFromCheckoutSession('cs_fake_1');
+
+        static::assertSame(ArtworkStatus::Sold, $held?->status);
     }
 
     #[Test]

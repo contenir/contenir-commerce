@@ -81,6 +81,17 @@ final readonly class OrderStore
     }
 
     /**
+     * Overwrites the entity with its stored values, discarding unsaved
+     * changes.
+     *
+     * @throws DbModelException
+     */
+    public function refresh(object $entity): void
+    {
+        $this->em->refresh($entity);
+    }
+
+    /**
      * @throws DbModelException
      */
     public function save(object $entity): void

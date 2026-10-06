@@ -37,9 +37,26 @@ final class FakePaymentGateway implements PaymentGatewayInterface
     private bool $failRefunds = false;
 
     /**
+     * @var (callable(): void)|null
+     */
+    private $beforeNextRetrieval;
+
+    /**
      * @var array<string, CheckoutSession>
      */
     private array $sessions = [];
+
+    /**
+     * Run $hook once, at the start of the next session retrieval: the moment
+     * a completion has read its order but not yet claimed its works. Lets a
+     * test interleave a second completion there.
+     *
+     * @param callable(): void $hook
+     */
+    public function beforeNextRetrieval(callable $hook): void
+    {
+        $this->beforeNextRetrieval = $hook;
+    }
 
     /**
      * Mark a session complete and paid, as Stripe does after a card payment.
@@ -104,6 +121,12 @@ final class FakePaymentGateway implements PaymentGatewayInterface
     public function retrieveCheckoutSession(string $sessionId): CheckoutSession
     {
         ++$this->retrievals;
+
+        $hook                      = $this->beforeNextRetrieval;
+        $this->beforeNextRetrieval = null;
+        if (null !== $hook) {
+            $hook();
+        }
 
         return (
             $this->sessions[$sessionId] ?? throw PaymentFailedException::fromProvider(

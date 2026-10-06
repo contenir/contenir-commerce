@@ -20,6 +20,7 @@ use Contenir\Commerce\Order\Refunder;
 use Contenir\Commerce\Tests\TestAsset\Clock\MovableClock;
 use Contenir\Commerce\Tests\TestAsset\Factory\CommerceFactory;
 use Contenir\Commerce\Tests\TestAsset\Payment\FakePaymentGateway;
+use Contenir\Db\Model\Type\TypeRegistry;
 
 /**
  * The three order services over a fresh in-memory database, a scriptable
@@ -155,7 +156,7 @@ trait OrderServicesTrait
         $this->setUpDatabase();
         $this->clock    = new MovableClock('2026-08-20 10:00:00');
         $this->gateway  = new FakePaymentGateway();
-        $this->artworks = new ArtworkRepository($this->em);
+        $this->artworks = new ArtworkRepository($this->em, $this->adapter, TypeRegistry::withDefaults());
         $this->checkout = new CheckoutService(
             $this->store(),
             new ArtworkReservation($this->artworks),

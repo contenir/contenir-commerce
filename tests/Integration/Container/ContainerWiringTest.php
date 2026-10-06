@@ -15,6 +15,7 @@ use Contenir\Commerce\Model\Repository\OrderRepository;
 use Contenir\Commerce\Module;
 use Contenir\Commerce\Money\Money;
 use Contenir\Commerce\Order\CheckoutService;
+use Contenir\Commerce\Order\CompletionOutcome;
 use Contenir\Commerce\Order\CompletionService;
 use Contenir\Commerce\Order\CustomerDetails;
 use Contenir\Commerce\Order\FulfilmentService;
@@ -23,6 +24,7 @@ use Contenir\Commerce\Order\PurchaseItem;
 use Contenir\Commerce\Payment\PaymentGatewayInterface;
 use Contenir\Commerce\Payment\StripeGateway;
 use Contenir\Commerce\Payment\UnconfiguredGateway;
+use Contenir\Commerce\Tests\TestAsset\Payment\FakePaymentGateway;
 use Contenir\Commerce\Tests\Trait\SqliteDatabaseTrait;
 use Contenir\Db\Model\ConfigProvider as DbModelConfigProvider;
 use Laminas\ServiceManager\ServiceManager;
@@ -106,6 +108,30 @@ final class ContainerWiringTest extends TestCase
         ];
 
         static::assertInstanceOf(OrderManager::class, (new ServiceManager($dependencies))->get(OrderManager::class));
+    }
+
+    #[Test]
+    public function theWiredCompletionClaimsWorksInsideTheEntityManagersTransaction(): void
+    {
+        $this->insert('artwork', ['price' => 3_500, 'status' => 'available']);
+        $gateway   = new FakePaymentGateway();
+        $container = $this->container([]);
+        $container->setService(PaymentGatewayInterface::class, $gateway);
+        $manager = $container->get(OrderManager::class);
+        $order   = $manager->createPendingOrder(
+            [new PurchaseItem(1, 'Tote bag', Money::fromCents(3_500))],
+            new CustomerDetails('Avery Buyer', 'avery@example.test'),
+        );
+        $manager->beginCheckout($order, 'https://example.test/thanks', 'https://example.test/cart');
+        $gateway->completeSession('cs_fake_1', 'pi_fake_1');
+
+        static::assertSame(
+            [CompletionOutcome::Completed, 'sold'],
+            [
+                $manager->completeFromCheckoutSession('cs_fake_1')->outcome,
+                $this->column('artwork', 'status', 'artwork_id', 1),
+            ],
+        );
     }
 
     #[Test]

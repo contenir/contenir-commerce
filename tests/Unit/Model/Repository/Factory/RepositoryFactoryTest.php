@@ -27,6 +27,7 @@ use Contenir\Commerce\Tests\TestAsset\Entity\SiteEmailLogEntity;
 use Contenir\Commerce\Tests\TestAsset\Entity\SiteOrderEntity;
 use Contenir\Commerce\Tests\TestAsset\Entity\SiteOrderItemEntity;
 use Contenir\Db\Model\EntityManager;
+use Contenir\Db\Model\Type\TypeRegistry;
 use PhpDb\Adapter\AdapterInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
@@ -133,6 +134,21 @@ final class RepositoryFactoryTest extends TestCase
         (new RepositoryFactory())($this->container('artwork'), ArtworkRepository::class);
     }
 
+    #[Test]
+    public function aNamedAdapterServiceOfTheWrongTypeIsRejected(): void
+    {
+        $container = new ArrayContainer([
+            ...$this->services(),
+            'config'     => ['contenir_db_model' => ['adapter' => 'db.gallery']],
+            'db.gallery' => 'not an adapter',
+        ]);
+
+        $this->expectException(ConfigurationException::class);
+        $this->expectExceptionMessage('Service "db.gallery" must be a PhpDb\Adapter\AdapterInterface, got string');
+
+        (new RepositoryFactory())($container, ArtworkRepository::class);
+    }
+
     #[DataProvider('invalidEntityClassProvider')]
     #[Test]
     public function anEntityClassThatDoesNotExtendTheBaseIsRejected(mixed $entityClass, string $message): void
@@ -178,6 +194,23 @@ final class RepositoryFactoryTest extends TestCase
         static::assertSame([$repository, $entity], [$built::class, $built->newEntity()::class]);
     }
 
+    #[Test]
+    public function theArtworkRepositoryUsesTheAdapterServiceContenirDbModelNames(): void
+    {
+        $services = $this->services();
+        unset($services[AdapterInterface::class]);
+        $container = new ArrayContainer([
+            ...$services,
+            'config'     => ['contenir_db_model' => ['adapter' => 'db.gallery']],
+            'db.gallery' => static::createStub(AdapterInterface::class),
+        ]);
+
+        static::assertInstanceOf(
+            ArtworkRepository::class,
+            (new RepositoryFactory())($container, ArtworkRepository::class),
+        );
+    }
+
     /**
      * @param array<string, mixed> $services
      */
@@ -185,10 +218,7 @@ final class RepositoryFactoryTest extends TestCase
     #[Test]
     public function withoutAUsableConfigServiceTheDefaultEntityApplies(array $services): void
     {
-        $container = new ArrayContainer([
-            ...$services,
-            EntityManager::class => new EntityManager(static::createStub(AdapterInterface::class)),
-        ]);
+        $container = new ArrayContainer([...$this->services(), ...$services]);
 
         static::assertSame(
             ArtworkEntity::class,
@@ -202,8 +232,22 @@ final class RepositoryFactoryTest extends TestCase
     private function container(mixed $commerce): ArrayContainer
     {
         return new ArrayContainer([
-            'config'             => null === $commerce ? [] : ['contenir_commerce' => $commerce],
-            EntityManager::class => new EntityManager(static::createStub(AdapterInterface::class)),
+            ...$this->services(),
+            'config' => null === $commerce ? [] : ['contenir_commerce' => $commerce],
         ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function services(): array
+    {
+        $adapter = static::createStub(AdapterInterface::class);
+
+        return [
+            EntityManager::class    => new EntityManager($adapter),
+            AdapterInterface::class => $adapter,
+            TypeRegistry::class     => TypeRegistry::withDefaults(),
+        ];
     }
 }

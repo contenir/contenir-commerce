@@ -28,6 +28,8 @@ use Contenir\Commerce\Model\Repository\OrderRepository;
 use Contenir\Db\Model\EntityManager;
 use Contenir\Db\Model\Exception\ExceptionInterface as DbModelException;
 use Contenir\Db\Model\Repository;
+use Contenir\Db\Model\Type\TypeRegistry;
+use PhpDb\Adapter\AdapterInterface;
 use Psr\Container\ContainerExceptionInterface;
 use Psr\Container\ContainerInterface;
 
@@ -38,10 +40,34 @@ use Psr\Container\ContainerInterface;
  * "artist_enquiry_file_entity" and "email_log_entity". Without a key the
  * repository hydrates the package's default entity.
  *
+ * ArtworkRepository also gets the database adapter the EntityManager runs on
+ * (the service named by "contenir_db_model.adapter", AdapterInterface by
+ * default) and contenir-db-model's TypeRegistry, for its atomic claim.
+ *
  * @api
  */
 final class RepositoryFactory
 {
+    /**
+     * @throws ConfigurationException When a service or the entity class is not usable.
+     * @throws ContainerExceptionInterface
+     * @throws DbModelException When the entity class is not a valid mapping.
+     */
+    private function artworks(ContainerInterface $container, EntityManager $em, ConfigReader $config): ArtworkRepository
+    {
+        $adapter = ConfigReader::fromContainer($container, section: 'contenir_db_model')->string(
+            'adapter',
+            AdapterInterface::class,
+        );
+
+        return new ArtworkRepository(
+            $em,
+            ServiceLocator::get($container, AdapterInterface::class, $adapter),
+            ServiceLocator::get($container, TypeRegistry::class),
+            $config->className('artwork_entity', AbstractArtworkEntity::class, ArtworkEntity::class),
+        );
+    }
+
     /**
      * @return Repository<object>
      *
@@ -55,10 +81,7 @@ final class RepositoryFactory
         $em     = ServiceLocator::get($container, EntityManager::class);
 
         return match ($requestedName) {
-            ArtworkRepository::class => new ArtworkRepository(
-                $em,
-                $config->className('artwork_entity', AbstractArtworkEntity::class, ArtworkEntity::class),
-            ),
+            ArtworkRepository::class           => $this->artworks($container, $em, $config),
             OrderRepository::class => new OrderRepository(
                 $em,
                 $config->className('order_entity', AbstractOrderEntity::class, OrderEntity::class),
