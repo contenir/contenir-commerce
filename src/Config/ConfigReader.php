@@ -9,6 +9,8 @@ use Psr\Container\ContainerExceptionInterface;
 use Psr\Container\ContainerInterface;
 
 use function is_array;
+use function is_float;
+use function is_int;
 use function is_string;
 use function is_subclass_of;
 
@@ -69,6 +71,23 @@ final readonly class ConfigReader
         }
 
         throw ConfigurationException::invalidEntityClass($this->key($key), $value, $baseClass);
+    }
+
+    /**
+     * An integer or float; a numeric string is not a number.
+     *
+     * @throws ConfigurationException When the value is not an integer or float.
+     *
+     * @mago-expect analysis:mixed-assignment Config values are untyped; the type is checked here.
+     */
+    public function number(string $key, int|float $default): int|float
+    {
+        $value = $this->values[$key] ?? $default;
+        if (is_int($value) || is_float($value)) {
+            return $value;
+        }
+
+        throw ConfigurationException::invalidValue($this->key($key), 'a number', $value);
     }
 
     /**

@@ -224,6 +224,25 @@ final class StripeGatewayTest extends TestCase
     }
 
     #[Test]
+    public function chargesInTheConfiguredCurrencyInLowerCase(): void
+    {
+        $this->queueSession(['status' => 'open']);
+        $gateway = new StripeGateway(
+            new StripeClient('sk_test_fake'),
+            new FixedClock(new DateTimeImmutable('2026-08-20T10:00:00+10:00')),
+            'NZD',
+        );
+
+        $gateway->createCheckoutSession(new CheckoutRequest(
+            [new CheckoutLineItem('Tote bag', Money::fromCents(3_500))],
+            'https://example.test/thanks',
+            'https://example.test/cart',
+        ));
+
+        static::assertSame('nzd', $this->http->requests[0]['params']['line_items'][0]['price_data']['currency']);
+    }
+
+    #[Test]
     public function createsAHostedCheckoutWithGstInclusiveAudLineItems(): void
     {
         $this->queueSession(['status' => 'open', 'url' => 'https://checkout.stripe.com/c/pay/cs_test_123']);

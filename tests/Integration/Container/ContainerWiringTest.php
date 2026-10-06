@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Contenir\Commerce\Tests\Integration\Container;
 
 use Contenir\Commerce\Clock\SystemClock;
+use Contenir\Commerce\Config\CommerceSettings;
 use Contenir\Commerce\ConfigProvider;
 use Contenir\Commerce\Model\Repository\ArtistEnquiryFileRepository;
 use Contenir\Commerce\Model\Repository\ArtistEnquiryRepository;
@@ -60,6 +61,7 @@ final class ContainerWiringTest extends TestCase
             'artist enquiry files' => [ArtistEnquiryFileRepository::class],
             'email log'            => [EmailLogRepository::class],
             'order manager'        => [OrderManager::class],
+            'commerce settings'    => [CommerceSettings::class],
             'checkout service'     => [CheckoutService::class],
             'completion service'   => [CompletionService::class],
             'fulfilment service'   => [FulfilmentService::class],
@@ -108,6 +110,16 @@ final class ContainerWiringTest extends TestCase
         ];
 
         static::assertInstanceOf(OrderManager::class, (new ServiceManager($dependencies))->get(OrderManager::class));
+    }
+
+    #[Test]
+    public function theSettingsComeFromTheCommerceConfigKey(): void
+    {
+        $settings = $this->container(['contenir_commerce' => ['order_reference_prefix' => 'GG']])->get(
+            CommerceSettings::class,
+        );
+
+        static::assertSame('GG', $settings->orderReferencePrefix);
     }
 
     #[Test]

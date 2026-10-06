@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Contenir\Commerce\Tests\Unit;
 
 use Contenir\Commerce\Clock\SystemClock;
+use Contenir\Commerce\Config\CommerceSettings;
+use Contenir\Commerce\Config\Factory\CommerceSettingsFactory;
 use Contenir\Commerce\ConfigProvider;
 use Contenir\Commerce\Model\Repository\ArtistEnquiryFileRepository;
 use Contenir\Commerce\Model\Repository\ArtistEnquiryRepository;
@@ -71,6 +73,7 @@ final class ConfigProviderTest extends TestCase
                     ArtworkReservation::class          => ArtworkReservationFactory::class,
                     Refunder::class                    => RefunderFactory::class,
                     PaymentGatewayInterface::class     => StripeGatewayFactory::class,
+                    CommerceSettings::class            => CommerceSettingsFactory::class,
                 ],
             ],
             (new ConfigProvider())->getDependencies(),

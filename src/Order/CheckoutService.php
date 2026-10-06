@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Contenir\Commerce\Order;
 
+use Contenir\Commerce\Config\CommerceSettings;
 use Contenir\Commerce\Exception\ArtworkUnavailableException;
 use Contenir\Commerce\Exception\InvalidArgumentException;
 use Contenir\Commerce\Exception\InvalidTransitionException;
@@ -31,13 +32,12 @@ use function sprintf;
  */
 final readonly class CheckoutService
 {
-    private const string REF_PREFIX = 'LR';
-
     public function __construct(
         private OrderStore $store,
         private ArtworkReservation $reservation,
         private PurchaseItemCheck $itemCheck,
         private PaymentGatewayInterface $gateway,
+        private CommerceSettings $settings,
     ) {}
 
     /**
@@ -94,7 +94,9 @@ final readonly class CheckoutService
      * Creates a pending order with a snapshot of each item. Each item's
      * price, and its title when the artwork maps one, must match the
      * artwork as stored: the order never trusts the caller's prices. The
-     * order and its lines are written in one transaction.
+     * reference takes the configured prefix and the recorded tax
+     * (gstAmount) the configured rate. The order and its lines are written
+     * in one transaction.
      *
      * @param list<PurchaseItem> $items
      *
@@ -124,37 +126,7 @@ final readonly class CheckoutService
              * @throws OrderNotFoundException
              * @throws DbModelException
              */
-            function () use ($items, $customer, $total): AbstractOrderEntity {
-                $now                  = $this->store->now();
-                $order                = $this->store->newOrder();
-                $order->orderRef      = sprintf('%s-PENDING', self::REF_PREFIX);
-                $order->customerName  = $customer->name;
-                $order->customerEmail = $customer->email;
-                $order->customerPhone = $customer->phone;
-                $order->customerNotes = $customer->notes;
-                $order->status        = OrderStatus::Pending;
-                $order->total         = $total->amount;
-                $order->gstAmount     = $total->gstComponent()->amount;
-                $order->created       = $now;
-                $order->updated       = $now;
-                $this->store->save($order);
-
-                $order->orderRef = sprintf('%s-%s-%04d', self::REF_PREFIX, $now->format('Y'), $order->getId());
-                $this->store->save($order);
-
-                foreach ($items as $item) {
-                    $line             = $this->store->newLine();
-                    $line->orderId    = $order->getId();
-                    $line->artworkId  = $item->artworkId;
-                    $line->title      = $item->title;
-                    $line->artistName = $item->artistName;
-                    $line->price      = $item->price->amount;
-                    $line->created    = $now;
-                    $this->store->save($line);
-                }
-
-                return $order;
-            },
+            fn(): AbstractOrderEntity => $this->writeOrder($items, $customer, $total),
         );
     }
 
@@ -171,5 +143,45 @@ final readonly class CheckoutService
     public function purchaseItemsFor(AbstractOrderEntity $order): array
     {
         return $this->store->purchaseItemsFor($order);
+    }
+
+    /**
+     * @param list<PurchaseItem> $items
+     *
+     * @throws OrderNotFoundException
+     * @throws DbModelException
+     */
+    private function writeOrder(array $items, CustomerDetails $customer, Money $total): AbstractOrderEntity
+    {
+        $now                  = $this->store->now();
+        $prefix               = $this->settings->orderReferencePrefix;
+        $order                = $this->store->newOrder();
+        $order->orderRef      = sprintf('%s-PENDING', $prefix);
+        $order->customerName  = $customer->name;
+        $order->customerEmail = $customer->email;
+        $order->customerPhone = $customer->phone;
+        $order->customerNotes = $customer->notes;
+        $order->status        = OrderStatus::Pending;
+        $order->total         = $total->amount;
+        $order->gstAmount     = $total->gstComponent($this->settings->taxRate)->amount;
+        $order->created       = $now;
+        $order->updated       = $now;
+        $this->store->save($order);
+
+        $order->orderRef = sprintf('%s-%s-%04d', $prefix, $now->format('Y'), $order->getId());
+        $this->store->save($order);
+
+        foreach ($items as $item) {
+            $line             = $this->store->newLine();
+            $line->orderId    = $order->getId();
+            $line->artworkId  = $item->artworkId;
+            $line->title      = $item->title;
+            $line->artistName = $item->artistName;
+            $line->price      = $item->price->amount;
+            $line->created    = $now;
+            $this->store->save($line);
+        }
+
+        return $order;
     }
 }

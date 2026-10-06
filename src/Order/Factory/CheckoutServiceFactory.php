@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Contenir\Commerce\Order\Factory;
 
+use Contenir\Commerce\Config\CommerceSettings;
 use Contenir\Commerce\Container\ServiceLocator;
 use Contenir\Commerce\Exception\ConfigurationException;
 use Contenir\Commerce\Order\ArtworkReservation;
@@ -32,6 +33,7 @@ final class CheckoutServiceFactory
             ServiceLocator::get($container, ArtworkReservation::class),
             ServiceLocator::get($container, PurchaseItemCheck::class),
             ServiceLocator::get($container, PaymentGatewayInterface::class),
+            ServiceLocator::get($container, CommerceSettings::class),
         );
     }
 }

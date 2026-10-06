@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Contenir\Commerce\Exception;
 
 use InvalidArgumentException as SplInvalidArgumentException;
+use Throwable;
 
 use function get_debug_type;
+use function is_string;
 use function sprintf;
 
 /**
@@ -30,6 +32,22 @@ final class ConfigurationException extends SplInvalidArgumentException implement
     public static function invalidService(string $name, string $expected, mixed $service): self
     {
         return new self(sprintf('Service "%s" must be a %s, got %s', $name, $expected, get_debug_type($service)));
+    }
+
+    /**
+     * A value of the right type that is out of range or malformed.
+     */
+    public static function invalidSetting(
+        string $key,
+        string $expected,
+        string|int|float $value,
+        ?Throwable $previous = null,
+    ): self {
+        return new self(
+            sprintf('Config "%s" must be %s, got %s', $key, $expected, is_string($value) ? "\"{$value}\"" : $value),
+            0,
+            $previous,
+        );
     }
 
     public static function invalidValue(string $key, string $expected, mixed $value): self

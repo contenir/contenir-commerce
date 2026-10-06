@@ -14,28 +14,19 @@ use function sprintf;
 use const PHP_INT_MAX;
 
 /**
- * A GST-inclusive AUD amount held as integer cents. Every operation is
- * integer arithmetic: no amount ever passes through a float.
+ * A tax-inclusive amount held as integer cents, in the site's one currency
+ * (AUD unless configured otherwise; Money does not carry it). Every
+ * operation is integer arithmetic: no amount ever passes through a float.
  *
- * Prices are GST-inclusive, so the GST component of an amount is one
- * eleventh of it, rounded to the nearest cent. One eleventh of a whole
- * number of cents is never exactly half a cent, so there is no tie to break.
+ * Prices are tax-inclusive, so the tax component of an amount at rate r is
+ * amount × r / (1 + r), rounded half up to the nearest cent. At the default
+ * 10% GST that is one eleventh, which is never exactly half a cent, so the
+ * result is the same as RC1's for every amount.
  *
  * @api
  */
 final readonly class Money
 {
-    /**
-     * The GST rate is 10%, so a GST-inclusive amount is 11 parts, one of
-     * them GST.
-     */
-    private const int GST_PARTS = 11;
-
-    /**
-     * A remainder of this many elevenths of a cent or more rounds up.
-     */
-    private const int GST_ROUND_UP_FROM = 6;
-
     private const int CENTS_PER_DOLLAR = 100;
 
     /**
@@ -93,13 +84,22 @@ final readonly class Money
     }
 
     /**
-     * The GST included in this amount: one eleventh, rounded half up to the
-     * nearest cent.
+     * The tax included in this amount at $rate (10% GST when null), rounded
+     * half up to the nearest cent: a remainder of exactly half a cent rounds
+     * up. The name predates configurable rates; pass the configured
+     * CommerceSettings::$taxRate for another tax.
+     *
+     * With p the rate in parts per million and W = 1,000,000 + p the
+     * tax-inclusive whole, the amount is split as q × W + r so that neither
+     * product can overflow: the tax is q × p plus r × p / W, rounded.
      */
-    public function gstComponent(): self
+    public function gstComponent(?TaxRate $rate = null): self
     {
-        $cents = intdiv($this->amount, self::GST_PARTS);
-        if (($this->amount % self::GST_PARTS) >= self::GST_ROUND_UP_FROM) {
+        $parts = ($rate ?? TaxRate::gst())->partsPerMillion;
+        $whole = TaxRate::PARTS_PER_MILLION + $parts;
+        $rest  = ($this->amount % $whole) * $parts;
+        $cents = (intdiv($this->amount, $whole) * $parts) + intdiv($rest, $whole);
+        if ((2 * ($rest % $whole)) >= $whole) {
             ++$cents;
         }
 

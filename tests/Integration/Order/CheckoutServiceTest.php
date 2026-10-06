@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Contenir\Commerce\Tests\Integration\Order;
 
+use Contenir\Commerce\Config\CommerceSettings;
 use Contenir\Commerce\Exception\ArtworkUnavailableException;
 use Contenir\Commerce\Exception\InvalidArgumentException;
 use Contenir\Commerce\Exception\InvalidTransitionException;
@@ -44,6 +45,19 @@ final class CheckoutServiceTest extends TestCase
             'dearer'         => [200_000, '"Headland, Dawn" (artwork 1) is priced $1,850.00, not $2,000.00'],
             'free'           => [0, '"Headland, Dawn" (artwork 1) is priced $1,850.00, not $0.00'],
         ];
+    }
+
+    #[Test]
+    public function aConfiguredPrefixAndTaxRateShapeTheOrder(): void
+    {
+        $checkout = $this->checkoutWith($this->artworks, new CommerceSettings('GG', 'NZD', 15, 'GST'));
+
+        $order = $checkout->createPendingOrder($this->items(), CommerceFactory::customer());
+
+        static::assertSame(
+            ['GG-2026-0001', ['total' => 283_000, 'gst_amount' => 36_913]],
+            [$order->orderRef, $this->orderRow(['total', 'gst_amount'])],
+        );
     }
 
     #[Test]

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Contenir\Commerce;
 
 use Contenir\Commerce\Clock\SystemClock;
+use Contenir\Commerce\Config\CommerceSettings;
+use Contenir\Commerce\Config\Factory\CommerceSettingsFactory;
 use Contenir\Commerce\Model\Repository\ArtistEnquiryFileRepository;
 use Contenir\Commerce\Model\Repository\ArtistEnquiryRepository;
 use Contenir\Commerce\Model\Repository\ArtworkRepository;
@@ -75,6 +77,7 @@ final class ConfigProvider
                 ArtworkReservation::class          => ArtworkReservationFactory::class,
                 Refunder::class                    => RefunderFactory::class,
                 PaymentGatewayInterface::class     => StripeGatewayFactory::class,
+                CommerceSettings::class            => CommerceSettingsFactory::class,
             ],
         ];
     }

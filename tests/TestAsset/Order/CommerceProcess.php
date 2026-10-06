@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Contenir\Commerce\Tests\TestAsset\Order;
 
+use Contenir\Commerce\Config\CommerceSettings;
 use Contenir\Commerce\Model\Repository\ArtworkRepository;
 use Contenir\Commerce\Model\Repository\OrderItemRepository;
 use Contenir\Commerce\Model\Repository\OrderRepository;
@@ -43,10 +44,16 @@ final readonly class CommerceProcess
         $adapter = new Adapter($driver, new AdapterPlatform($driver));
         $em      = new EntityManager($adapter);
 
-        $this->artworks   = new ArtworkRepository($em, $adapter, TypeRegistry::withDefaults());
-        $store            = new OrderStore($em, new OrderRepository($em), new OrderItemRepository($em), $clock);
-        $reservation      = new ArtworkReservation($this->artworks);
-        $this->checkout   = new CheckoutService($store, $reservation, new PurchaseItemCheck(), $gateway);
+        $this->artworks = new ArtworkRepository($em, $adapter, TypeRegistry::withDefaults());
+        $store          = new OrderStore($em, new OrderRepository($em), new OrderItemRepository($em), $clock);
+        $reservation    = new ArtworkReservation($this->artworks);
+        $this->checkout = new CheckoutService(
+            $store,
+            $reservation,
+            new PurchaseItemCheck(),
+            $gateway,
+            new CommerceSettings(),
+        );
         $this->completion = new CompletionService($store, $reservation, new Refunder($gateway), $gateway);
     }
 }

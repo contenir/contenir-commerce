@@ -48,6 +48,14 @@ final class ExceptionsTest extends TestCase
                 ConfigurationException::unknownRepository('Foo'),
                 'No repository "Foo" is built by this factory',
             ],
+            'invalid string setting' => [
+                ConfigurationException::invalidSetting('contenir_commerce.currency', 'a currency code', 'AU'),
+                'Config "contenir_commerce.currency" must be a currency code, got "AU"',
+            ],
+            'invalid number setting' => [
+                ConfigurationException::invalidSetting('contenir_commerce.tax_rate', 'a percentage', 12.5),
+                'Config "contenir_commerce.tax_rate" must be a percentage, got 12.5',
+            ],
             'invalid value'          => [
                 ConfigurationException::invalidValue('stripe.secret_key', 'a string', null),
                 'Config "stripe.secret_key" must be a string, got null',

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Contenir\Commerce\Tests\Trait;
 
+use Contenir\Commerce\Config\CommerceSettings;
 use Contenir\Commerce\Model\Entity\AbstractOrderEntity;
 use Contenir\Commerce\Model\Repository\ArtworkRepository;
 use Contenir\Commerce\Model\Repository\OrderItemRepository;
@@ -72,13 +73,16 @@ trait OrderServicesTrait
         return $order;
     }
 
-    private function checkoutWith(ArtworkRepository $artworks): CheckoutService
-    {
+    private function checkoutWith(
+        ArtworkRepository $artworks,
+        CommerceSettings $settings = new CommerceSettings(),
+    ): CheckoutService {
         return new CheckoutService(
             $this->store(),
             new ArtworkReservation($artworks),
             new PurchaseItemCheck(),
             $this->gateway,
+            $settings,
         );
     }
 

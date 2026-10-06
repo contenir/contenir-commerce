@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Contenir\Commerce\Payment\Factory;
 
+use Contenir\Commerce\Config\CommerceSettings;
 use Contenir\Commerce\Container\ServiceLocator;
 use Contenir\Commerce\Exception\ConfigurationException;
 use Contenir\Commerce\Payment\PaymentGatewayInterface;
@@ -18,7 +19,8 @@ use function is_array;
 use function is_string;
 
 /**
- * Builds the Stripe gateway from "stripe.secret_key", or the
+ * Builds the Stripe gateway from "stripe.secret_key", in the currency of
+ * the CommerceSettings service, or the
  * UnconfiguredGateway when no key is set, so a site without Stripe
  * credentials still boots and fails only when money would move.
  *
@@ -49,6 +51,10 @@ final class StripeGatewayFactory
             return new UnconfiguredGateway();
         }
 
-        return new StripeGateway(new StripeClient($secretKey), ServiceLocator::get($container, ClockInterface::class));
+        return new StripeGateway(
+            new StripeClient($secretKey),
+            ServiceLocator::get($container, ClockInterface::class),
+            ServiceLocator::get($container, CommerceSettings::class)->currency,
+        );
     }
 }
