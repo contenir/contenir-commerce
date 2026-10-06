@@ -45,7 +45,7 @@ final readonly class TaxRate
             throw new InvalidArgumentException(sprintf(
                 'A tax rate must be a percentage from 0 to %d, got %s',
                 self::MAX_PERCENT,
-                var_export($percent, true),
+                var_export($percent, return: true),
             ));
         }
 

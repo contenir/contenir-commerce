@@ -49,7 +49,7 @@ final class ConfigurationException extends SplInvalidArgumentException implement
                 'Config "%s" must be %s, got %s',
                 $key,
                 $expected,
-                is_string($value) ? "\"{$value}\"" : var_export($value, true),
+                is_string($value) ? "\"{$value}\"" : var_export($value, return: true),
             ),
             0,
             $previous,
