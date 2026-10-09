@@ -4,6 +4,42 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/).
 
+## [2.0.0-RC3] - Unreleased
+
+Sell anything, not only artworks. See "From 2.0.0-RC2 to 2.0.0-RC3" in [UPGRADE-2.0.md](UPGRADE-2.0.md).
+
+### Added
+
+- Items and variants: `AbstractItemEntity`/`ItemEntity` (`item`), with a `variants` relation, and
+  `AbstractItemVariantEntity`/`ItemVariantEntity` (`item_variant`) carrying the label, SKU, price and stock (`null`
+  when not tracked), with `hasStock()` and `isStockTracked()`. `Item\ItemStatus` (`listed`, `unlisted`).
+- `ItemRepository` (`findListed()`, `findCurrent()`, `newEntity()`) and `ItemVariantRepository` (`findByItemId()`,
+  `findCurrent()`, `newEntity()`, and `claim()`, an atomic conditional decrement of a variant's stock).
+- Quantities: `PurchaseItem` takes a quantity, a variant label and a description, and has `getTotal()`; order lines
+  record the item and variant ids, the variant label, the unit price and the quantity, and Stripe receives the
+  quantity. `PurchaseItemMismatchException::forLabel()`.
+- The `item_entity` and `item_variant_entity` config keys.
+
+### Changed
+
+- **Breaking:** `ArtworkReservation` becomes `ItemInventory`, claiming each line's quantity from its variant's stock;
+  variants without tracked stock are never claimed. `ArtworkUnavailableException` becomes `ItemUnavailableException`,
+  and `PurchaseItemMismatchException::getArtworkId()` becomes `getItemVariantId()`.
+- **Breaking:** `PurchaseItem($itemVariantId, $title, $unitPrice, $quantity, $variantLabel, $description)`, and the
+  order line columns `item_id`, `item_variant_id`, `variant_label`, `description`, `unit_price` and `quantity`
+  replace `artwork_id`, `artist_name` and `price`. `AbstractOrderItemEntity::getPrice()` becomes `getUnitPrice()`.
+- **Breaking:** the order tables are `commerce_order` and `commerce_order_item`.
+- **Breaking:** the default order reference prefix is `ORD`.
+- `findCurrent()` returns null for an entity the EntityManager holds whose row has since been deleted, rather than
+  throwing.
+- Tested against contenir-db-model 2.0.0-rc4.
+
+### Removed
+
+- **Breaking:** `AbstractArtworkEntity`, `ArtworkEntity`, `ArtworkRepository`, `ArtworkStatus`, `ItemType` and the
+  `artwork_entity` key; the artist enquiry entities, repositories, `EnquiryStatus` and their config keys;
+  `EmailLogEntity::$artistEnquiryId` and `EmailLogRepository::findByArtistEnquiryId()`.
+
 ## [2.0.0-RC2] - Unreleased
 
 Follow-ups to RC1. See "From 2.0.0-RC1 to 2.0.0-RC2" in [UPGRADE-2.0.md](UPGRADE-2.0.md).

@@ -65,9 +65,9 @@ final class FulfilmentServiceTest extends TestCase
             [
                 [['paymentIntentId' => 'pi_fake_1', 'amount' => 50_000, 'idempotencyKey' => null]],
                 ['status' => 'refunded', 'refunded_at' => '2026-08-25 15:00:00', 'updated' => '2026-08-25 15:00:00'],
-                'sold',
+                0,
             ],
-            [$this->gateway->refunds, $this->orderRow(['status', 'refunded_at', 'updated']), $this->artworkStatus(1)],
+            [$this->gateway->refunds, $this->orderRow(['status', 'refunded_at', 'updated']), $this->variantStock(1)],
         );
     }
 
@@ -95,7 +95,7 @@ final class FulfilmentServiceTest extends TestCase
         $order->stripePaymentIntentId = '';
 
         $this->expectException(PaymentFailedException::class);
-        $this->expectExceptionMessage('Order "LR-2026-0001" has no Stripe payment to refund');
+        $this->expectExceptionMessage('Order "ORD-2026-0001" has no Stripe payment to refund');
 
         $this->fulfilment->refundOrder($order);
     }
@@ -106,7 +106,7 @@ final class FulfilmentServiceTest extends TestCase
         $order = $this->checkedOutOrder();
 
         $this->expectException(PaymentFailedException::class);
-        $this->expectExceptionMessage('Order "LR-2026-0001" has no Stripe payment to refund');
+        $this->expectExceptionMessage('Order "ORD-2026-0001" has no Stripe payment to refund');
 
         $this->fulfilment->refundOrder($order);
     }

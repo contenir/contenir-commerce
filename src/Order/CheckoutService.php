@@ -5,13 +5,15 @@ declare(strict_types=1);
 namespace Contenir\Commerce\Order;
 
 use Contenir\Commerce\Config\CommerceSettings;
-use Contenir\Commerce\Exception\ArtworkUnavailableException;
 use Contenir\Commerce\Exception\InvalidArgumentException;
 use Contenir\Commerce\Exception\InvalidTransitionException;
+use Contenir\Commerce\Exception\ItemUnavailableException;
 use Contenir\Commerce\Exception\OrderNotFoundException;
 use Contenir\Commerce\Exception\OverflowException;
 use Contenir\Commerce\Exception\PaymentFailedException;
 use Contenir\Commerce\Exception\PurchaseItemMismatchException;
+use Contenir\Commerce\Model\Entity\AbstractItemEntity;
+use Contenir\Commerce\Model\Entity\AbstractItemVariantEntity;
 use Contenir\Commerce\Model\Entity\AbstractOrderEntity;
 use Contenir\Commerce\Money\Money;
 use Contenir\Commerce\Payment\CheckoutLineItem;
@@ -34,7 +36,7 @@ final readonly class CheckoutService
 {
     public function __construct(
         private OrderStore $store,
-        private ArtworkReservation $reservation,
+        private ItemInventory $inventory,
         private PurchaseItemCheck $itemCheck,
         private PaymentGatewayInterface $gateway,
         private CommerceSettings $settings,
@@ -45,7 +47,7 @@ final readonly class CheckoutService
      * not started checkout yet. Each checkout attempt needs its own order,
      * so that a payment through an older session can still be matched.
      *
-     * @throws ArtworkUnavailableException When a work has been sold since the order was created.
+     * @throws ItemUnavailableException When an item has sold out or been unlisted since the order was created.
      * @throws InvalidTransitionException When the order is not pending or checkout has already begun.
      * @throws OrderNotFoundException When the order has not been saved.
      * @throws PaymentFailedException
@@ -63,14 +65,15 @@ final readonly class CheckoutService
         }
 
         $items = $this->store->purchaseItemsFor($order);
-        $this->reservation->assertAvailable($items);
+        $this->inventory->assertAvailable($items);
 
         $session = $this->gateway->createCheckoutSession(new CheckoutRequest(
             array_map(
                 static fn(PurchaseItem $item): CheckoutLineItem => new CheckoutLineItem(
-                    $item->title,
-                    $item->price,
-                    description: $item->artistName,
+                    null === $item->variantLabel ? $item->title : sprintf('%s — %s', $item->title, $item->variantLabel),
+                    $item->unitPrice,
+                    $item->quantity,
+                    $item->description,
                 ),
                 $items,
             ),
@@ -92,17 +95,18 @@ final readonly class CheckoutService
 
     /**
      * Creates a pending order with a snapshot of each item. Each item's
-     * price, and its title when the artwork maps one, must match the
-     * artwork as stored: the order never trusts the caller's prices. The
+     * unit price, and its title and variant label where the item and
+     * variant have them, must match them as stored: the order never trusts
+     * the caller's prices. The
      * reference takes the configured prefix and the recorded tax
      * (gstAmount) the configured rate. The order and its lines are written
      * in one transaction.
      *
      * @param list<PurchaseItem> $items
      *
-     * @throws ArtworkUnavailableException When a work has been sold since it was carted.
-     * @throws PurchaseItemMismatchException When an item's price or title differs from its artwork's.
-     * @throws InvalidArgumentException When there are no items or a work appears twice.
+     * @throws ItemUnavailableException When an item has sold out or been unlisted since it was carted.
+     * @throws PurchaseItemMismatchException When an item's price, title or label differs from the stored one.
+     * @throws InvalidArgumentException When there are no items or a variant appears twice.
      * @throws OverflowException When the total exceeds the integer range of cents.
      * @throws DbModelException
      * @throws Throwable Database errors, after rolling back.
@@ -114,11 +118,12 @@ final readonly class CheckoutService
         }
 
         $this->itemCheck->assertDistinct($items);
-        $this->itemCheck->assertListed($this->reservation->available($items));
+        $listed = $this->inventory->available($items);
+        $this->itemCheck->assertListed($listed);
 
         $total = Money::zero();
         foreach ($items as $item) {
-            $total = $total->add($item->price);
+            $total = $total->add($item->getTotal());
         }
 
         return $this->store->transactional(
@@ -126,13 +131,13 @@ final readonly class CheckoutService
              * @throws OrderNotFoundException
              * @throws DbModelException
              */
-            fn(): AbstractOrderEntity => $this->writeOrder($items, $customer, $total),
+            fn(): AbstractOrderEntity => $this->writeOrder($listed, $customer, $total),
         );
     }
 
     /**
      * The order's lines as purchase items, in the order they were added. A
-     * line whose artwork has since been deleted has artwork id 0.
+     * line whose variant has since been deleted has variant id 0.
      *
      * @return list<PurchaseItem>
      *
@@ -146,12 +151,12 @@ final readonly class CheckoutService
     }
 
     /**
-     * @param list<PurchaseItem> $items
+     * @param list<array{PurchaseItem, AbstractItemVariantEntity, AbstractItemEntity}> $listed
      *
      * @throws OrderNotFoundException
      * @throws DbModelException
      */
-    private function writeOrder(array $items, CustomerDetails $customer, Money $total): AbstractOrderEntity
+    private function writeOrder(array $listed, CustomerDetails $customer, Money $total): AbstractOrderEntity
     {
         $now                  = $this->store->now();
         $prefix               = $this->settings->orderReferencePrefix;
@@ -171,14 +176,17 @@ final readonly class CheckoutService
         $order->orderRef = sprintf('%s-%s-%04d', $prefix, $now->format('Y'), $order->getId());
         $this->store->save($order);
 
-        foreach ($items as $item) {
-            $line             = $this->store->newLine();
-            $line->orderId    = $order->getId();
-            $line->artworkId  = $item->artworkId;
-            $line->title      = $item->title;
-            $line->artistName = $item->artistName;
-            $line->price      = $item->price->amount;
-            $line->created    = $now;
+        foreach ($listed as [$item, $variant]) {
+            $line                = $this->store->newLine();
+            $line->orderId       = $order->getId();
+            $line->itemId        = $variant->itemId;
+            $line->itemVariantId = $item->itemVariantId;
+            $line->title         = $item->title;
+            $line->variantLabel  = $item->variantLabel;
+            $line->description   = $item->description;
+            $line->unitPrice     = $item->unitPrice->amount;
+            $line->quantity      = $item->quantity;
+            $line->created       = $now;
             $this->store->save($line);
         }
 

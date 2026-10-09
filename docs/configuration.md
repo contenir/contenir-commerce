@@ -6,10 +6,10 @@
 
 | Service | Built by |
 | --- | --- |
-| `ArtworkRepository`, `OrderRepository`, `OrderItemRepository`, `ArtistEnquiryRepository`, `ArtistEnquiryFileRepository`, `EmailLogRepository` | `Model\Repository\Factory\RepositoryFactory`, over the shared `EntityManager`, with the configured entity classes |
+| `ItemRepository`, `ItemVariantRepository`, `OrderRepository`, `OrderItemRepository`, `EmailLogRepository` | `Model\Repository\Factory\RepositoryFactory`, over the shared `EntityManager`, with the configured entity classes |
 | `OrderManager` | `Order\Factory\OrderManagerFactory`: the façade over the three services below |
 | `CheckoutService`, `CompletionService`, `FulfilmentService` | `Order\Factory\CheckoutServiceFactory`, `CompletionServiceFactory`, `FulfilmentServiceFactory` |
-| `OrderStore`, `ArtworkReservation`, `Refunder` (internal) | `Order\Factory\OrderStoreFactory`, `ArtworkReservationFactory`, `RefunderFactory` |
+| `OrderStore`, `ItemInventory`, `Refunder` (internal) | `Order\Factory\OrderStoreFactory`, `ItemInventoryFactory`, `RefunderFactory` |
 | `PurchaseItemCheck` (internal) | invokable |
 | `CommerceSettings` | `Config\Factory\CommerceSettingsFactory`, from the `contenir_commerce` key |
 | `PaymentGatewayInterface` | `Payment\Factory\StripeGatewayFactory`: `StripeGateway`, or `UnconfiguredGateway` without a key |
@@ -18,7 +18,7 @@
 `Contenir\Commerce\Module::getConfig()` returns the same services under `service_manager` for laminas-mvc.
 
 The `EntityManager` comes from contenir-db-model's `ConfigProvider` or module, configured under
-`contenir_db_model` (the adapter service, the metadata cache). `ArtworkRepository` also takes that adapter service
+`contenir_db_model` (the adapter service, the metadata cache). `ItemVariantRepository` also takes that adapter service
 (`contenir_db_model.adapter`, `PhpDb\Adapter\AdapterInterface` by default) and contenir-db-model's `TypeRegistry`
 service, so that its atomic claim runs on the EntityManager's connection, inside its transactions. Entities are not
 container services.
@@ -58,7 +58,7 @@ A `stripe` value that is not an array, or a secret key that is not a string, thr
 
 ### `contenir_commerce`
 
-Every key is optional; without any, the package behaves exactly as RC1 did.
+Every key is optional.
 
 ```php
 return [
@@ -67,22 +67,21 @@ return [
         'currency'               => 'NZD',
         'tax_rate'               => 15,     // percent, included in every price
         'tax_label'              => 'GST',
-        'artwork_entity'         => App\Entity\Artwork::class,
+        'item_entity'            => App\Entity\Artwork::class,
     ],
 ];
 ```
 
 | Key | Default | Valid values |
 | --- | --- | --- |
-| `order_reference_prefix` | `LR` | A non-empty string. References read `<prefix>-<year>-<order id, at least 4 digits>` |
+| `order_reference_prefix` | `ORD` | A non-empty string. References read `<prefix>-<year>-<order id, at least 4 digits>` |
 | `currency` | `AUD` | Three letters, either case (an ISO 4217 code). Stored upper case; sent to Stripe lower case |
 | `tax_rate` | `10` | An int or float from 0 to 100, the percentage of tax included in prices. A numeric string is refused |
 | `tax_label` | `GST` | A non-empty string, for templates: `CommerceSettings::$taxLabel` |
-| `artwork_entity` | `ArtworkEntity` | A class extending `AbstractArtworkEntity` |
+| `item_entity` | `ItemEntity` | A class extending `AbstractItemEntity` |
+| `item_variant_entity` | `ItemVariantEntity` | A class extending `AbstractItemVariantEntity` |
 | `order_entity` | `OrderEntity` | A class extending `AbstractOrderEntity` |
 | `order_item_entity` | `OrderItemEntity` | A class extending `AbstractOrderItemEntity` |
-| `artist_enquiry_entity` | `ArtistEnquiryEntity` | A class extending `AbstractArtistEnquiryEntity` |
-| `artist_enquiry_file_entity` | `ArtistEnquiryFileEntity` | A class extending `AbstractArtistEnquiryFileEntity` |
 | `email_log_entity` | `EmailLogEntity` | A class extending `AbstractEmailLogEntity` |
 
 A null value takes the default. A value of the wrong type, an empty prefix or label, a currency that is not three
@@ -98,9 +97,10 @@ stored keep the tax they were created with.
 
 ## Database
 
-2.0 reads and writes the same tables and columns as 0.2: `artwork`, `gallery_order`, `gallery_order_item`,
-`artist_enquiry`, `artist_enquiry_file` and `email_log`. No migration is needed. Indexes on
-`gallery_order.stripe_checkout_session_id`, `gallery_order_item.order_id` and `artist_enquiry_file.artist_enquiry_id`
-keep the lookups the order services make fast; the claim updates `artwork` by its primary key.
+The package reads and writes five tables: `item`, `item_variant`, `commerce_order`, `commerce_order_item` and
+`email_log`; it ships no migrations. Indexes on `item_variant.item_id`, `commerce_order.stripe_checkout_session_id`
+and `commerce_order_item.order_id` keep the lookups the order services make fast; the claim updates `item_variant`
+by its primary key. Sites upgrading from RC2 and its gallery tables follow
+[UPGRADE-2.0.md](../UPGRADE-2.0.md#from-200-rc2-to-200-rc3).
 
 To add columns of your own, see [entities](entities.md).

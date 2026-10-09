@@ -11,7 +11,7 @@ use Contenir\Db\Model\Mapping\Table;
 /**
  * A site's own order line entity with an extra "edition_note" column.
  */
-#[Table('gallery_order_item')]
+#[Table('commerce_order_item')]
 final class SiteOrderItemEntity extends AbstractOrderItemEntity
 {
     #[Column('edition_note')]

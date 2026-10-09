@@ -57,28 +57,29 @@
         },
         {
             "name": "contenir/contenir-db-model",
-            "version": "v2.0.0-rc2",
+            "version": "v2.0.0-rc4",
             "source": {
                 "type": "git",
                 "url": "https://github.com/contenir/contenir-db-model.git",
-                "reference": "a11bc4f95f0418e76bff9d4175a300c14e5c8ce7"
+                "reference": "dd0f261acaf2b3e1ece9c5de1d9254442662b220"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/contenir/contenir-db-model/zipball/a11bc4f95f0418e76bff9d4175a300c14e5c8ce7",
-                "reference": "a11bc4f95f0418e76bff9d4175a300c14e5c8ce7",
+                "url": "https://api.github.com/repos/contenir/contenir-db-model/zipball/dd0f261acaf2b3e1ece9c5de1d9254442662b220",
+                "reference": "dd0f261acaf2b3e1ece9c5de1d9254442662b220",
                 "shasum": ""
             },
             "require": {
                 "php": "~8.3.0 || ~8.4.0 || ~8.5.0",
                 "php-db/phpdb": "0.6.x-dev",
                 "psr/container": "^1.1 || ^2.0",
-                "psr/simple-cache": "^2.0 || ^3.0"
+                "psr/simple-cache": "^1.0 || ^2.0 || ^3.0"
             },
             "require-dev": {
+                "contenir/contenir-qa-tools": "0.1.x-dev",
+                "infection/infection": "^0.34.1",
                 "php-db/phpdb-mysql": "^0.4.0",
                 "php-db/phpdb-pgsql": "0.1.x-dev",
-                "php-db/phpdb-qa-tools": "0.1.x-dev",
                 "php-db/phpdb-sqlite": "^0.2.0",
                 "phpunit/phpunit": "^11.5.42"
             },
@@ -112,7 +113,7 @@
                 "issues": "https://github.com/contenir/contenir-db-model/issues",
                 "source": "https://github.com/contenir/contenir-db-model"
             },
-            "time": "2026-10-05T04:43:19+00:00"
+            "time": "2026-10-07T03:57:29+00:00"
         },
         {
             "name": "laminas/laminas-servicemanager",

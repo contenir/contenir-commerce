@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Contenir\Commerce\Tests\Integration\Model;
 
 use Contenir\Commerce\ConfigProvider;
-use Contenir\Commerce\Model\Repository\ArtworkRepository;
+use Contenir\Commerce\Model\Repository\ItemRepository;
+use Contenir\Commerce\Model\Repository\ItemVariantRepository;
 use Contenir\Commerce\Model\Repository\OrderRepository;
-use Contenir\Commerce\Tests\TestAsset\Entity\SiteArtworkEntity;
+use Contenir\Commerce\Tests\TestAsset\Entity\SiteItemEntity;
+use Contenir\Commerce\Tests\TestAsset\Entity\SiteItemVariantEntity;
 use Contenir\Commerce\Tests\TestAsset\Entity\SiteOrderEntity;
 use Contenir\Commerce\Tests\TestAsset\Entity\SiteOrderItemEntity;
 use Contenir\Commerce\Tests\Trait\SqliteDatabaseTrait;
@@ -39,8 +41,8 @@ final class SiteEntityTest extends TestCase
     #[Test]
     public function aRedeclaredRelationLoadsTheSitesOwnLineEntity(): void
     {
-        $this->insert('gallery_order', ['order_ref' => 'LR-2026-0001', 'gift_message' => 'For June']);
-        $this->insert('gallery_order_item', ['order_id' => 1, 'title' => 'Rip Tide', 'edition_note' => '3 of 10']);
+        $this->insert('commerce_order', ['order_ref' => 'LR-2026-0001', 'gift_message' => 'For June']);
+        $this->insert('commerce_order_item', ['order_id' => 1, 'title' => 'Rip Tide', 'edition_note' => '3 of 10']);
 
         $order = $this->container->get(OrderRepository::class)->find(1);
 
@@ -63,18 +65,33 @@ final class SiteEntityTest extends TestCase
     #[Test]
     public function aSiteColumnIsWrittenThroughTheConfiguredEntity(): void
     {
-        $artworks       = $this->container->get(ArtworkRepository::class);
-        $artwork        = $artworks->newEntity();
-        $artwork->price = 185_000;
-        if ($artwork instanceof SiteArtworkEntity) {
-            $artwork->title = 'Headland, Dawn';
+        $item = $this->container->get(ItemRepository::class)->newEntity();
+        if ($item instanceof SiteItemEntity) {
+            $item->medium = 'Oil on linen';
         }
 
-        $this->em->save($artwork);
+        $this->em->save($item);
 
         static::assertSame(
-            [SiteArtworkEntity::class, 'Headland, Dawn', 'Headland, Dawn'],
-            [$artwork::class, $this->column('artwork', 'title', 'artwork_id', 1), $artwork->getTitle()],
+            [SiteItemEntity::class, 'Oil on linen', 'Oil on linen'],
+            [$item::class, $this->column('item', 'medium', 'item_id', 1), $item->getTitle()],
+        );
+    }
+
+    #[Test]
+    public function aSiteVariantColumnIsWrittenThroughTheConfiguredEntity(): void
+    {
+        $variant         = $this->container->get(ItemVariantRepository::class)->newEntity();
+        $variant->itemId = 1;
+        if ($variant instanceof SiteItemVariantEntity) {
+            $variant->frame = 'Oak';
+        }
+
+        $this->em->save($variant);
+
+        static::assertSame(
+            [SiteItemVariantEntity::class, 'Oak'],
+            [$variant::class, $this->column('item_variant', 'frame', 'item_variant_id', 1)],
         );
     }
 
@@ -91,9 +108,10 @@ final class SiteEntityTest extends TestCase
             'config'                => [
                 ...(new DbModelConfigProvider())(),
                 'contenir_commerce' => [
-                    'artwork_entity'    => SiteArtworkEntity::class,
-                    'order_entity'      => SiteOrderEntity::class,
-                    'order_item_entity' => SiteOrderItemEntity::class,
+                    'item_entity'         => SiteItemEntity::class,
+                    'item_variant_entity' => SiteItemVariantEntity::class,
+                    'order_entity'        => SiteOrderEntity::class,
+                    'order_item_entity'   => SiteOrderItemEntity::class,
                 ],
             ],
             AdapterInterface::class => $this->adapter,

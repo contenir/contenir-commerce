@@ -90,22 +90,6 @@ final class CommerceSettingsTest extends TestCase
         ];
     }
 
-    #[Test]
-    public function aGalleryElsewhereConfiguresItsOwn(): void
-    {
-        $settings = new CommerceSettings('GG', 'nzd', 15, 'GST (NZ)');
-
-        static::assertSame(
-            ['GG', 'NZD', true, 'GST (NZ)'],
-            [
-                $settings->orderReferencePrefix,
-                $settings->currency,
-                $settings->taxRate->equals(TaxRate::fromPercent(15)),
-                $settings->taxLabel,
-            ],
-        );
-    }
-
     #[DataProvider('invalidProvider')]
     #[Test]
     public function anInvalidSettingIsRejectedNamingItsKey(
@@ -119,6 +103,22 @@ final class CommerceSettingsTest extends TestCase
         $this->expectExceptionMessage($message);
 
         new CommerceSettings($prefix, $currency, $taxRate, $taxLabel);
+    }
+
+    #[Test]
+    public function anotherSiteConfiguresItsOwn(): void
+    {
+        $settings = new CommerceSettings('GG', 'nzd', 15, 'GST (NZ)');
+
+        static::assertSame(
+            ['GG', 'NZD', true, 'GST (NZ)'],
+            [
+                $settings->orderReferencePrefix,
+                $settings->currency,
+                $settings->taxRate->equals(TaxRate::fromPercent(15)),
+                $settings->taxLabel,
+            ],
+        );
     }
 
     #[Test]
@@ -136,12 +136,12 @@ final class CommerceSettingsTest extends TestCase
     }
 
     #[Test]
-    public function theDefaultsReproduceTheFirstReleaseCandidate(): void
+    public function theDefaultsAreANeutralPrefixAndAustralianGst(): void
     {
         $settings = new CommerceSettings();
 
         static::assertSame(
-            ['LR', 'AUD', 100_000, 'GST'],
+            ['ORD', 'AUD', 100_000, 'GST'],
             [
                 $settings->orderReferencePrefix,
                 $settings->currency,

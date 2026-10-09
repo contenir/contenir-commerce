@@ -24,12 +24,6 @@ final class EmailLogRepositoryTest extends TestCase
     private EmailLogRepository $repository;
 
     #[Test]
-    public function findsTheEmailsAboutAnEnquiryNewestFirst(): void
-    {
-        static::assertSame([4, 2], $this->ids($this->repository->findByArtistEnquiryId(7)));
-    }
-
-    #[Test]
     public function findsTheEmailsAboutAnOrderNewestFirst(): void
     {
         static::assertSame([3, 1], $this->ids($this->repository->findByOrderId(5)));
@@ -58,7 +52,6 @@ final class EmailLogRepositoryTest extends TestCase
         static::assertEquals(
             [
                 9,
-                null,
                 'buyer@example.test',
                 'Your order',
                 'OrderConfirmation',
@@ -69,7 +62,6 @@ final class EmailLogRepositoryTest extends TestCase
             ],
             [
                 $found?->orderId,
-                $found?->artistEnquiryId,
                 $found?->recipient,
                 $found?->subject,
                 $found?->messageClass,
@@ -88,19 +80,9 @@ final class EmailLogRepositoryTest extends TestCase
         $this->repository = new EmailLogRepository($this->em);
 
         $this->insert('email_log', ['order_id' => 5, 'recipient' => 'a@x.test', 'subject' => 'S', 'status' => 'sent']);
-        $this->insert('email_log', [
-            'artist_enquiry_id' => 7,
-            'recipient'         => 'b@x.test',
-            'subject'           => 'S',
-            'status'            => 'sent',
-        ]);
+        $this->insert('email_log', ['order_id' => 6, 'recipient' => 'b@x.test', 'subject' => 'S', 'status' => 'sent']);
         $this->insert('email_log', ['order_id' => 5, 'recipient' => 'c@x.test', 'subject' => 'S', 'status' => 'sent']);
-        $this->insert('email_log', [
-            'artist_enquiry_id' => 7,
-            'recipient'         => 'd@x.test',
-            'subject'           => 'S',
-            'status'            => 'sent',
-        ]);
+        $this->insert('email_log', ['recipient' => 'd@x.test', 'subject' => 'S', 'status' => 'sent']);
     }
 
     /**

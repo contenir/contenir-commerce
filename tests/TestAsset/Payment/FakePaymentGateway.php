@@ -55,7 +55,7 @@ final class FakePaymentGateway implements PaymentGatewayInterface
 
     /**
      * Run $hook once, at the start of the next session retrieval: the moment
-     * a completion has read its order but not yet claimed its works. Lets a
+     * a completion has read its order but not yet claimed its stock. Lets a
      * test interleave a second completion there.
      *
      * @param callable(): void $hook

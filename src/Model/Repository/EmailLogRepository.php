@@ -28,18 +28,6 @@ final class EmailLogRepository extends Repository
     }
 
     /**
-     * The emails sent about one artist enquiry, newest first.
-     *
-     * @return list<AbstractEmailLogEntity>
-     *
-     * @throws DbModelException
-     */
-    public function findByArtistEnquiryId(int $artistEnquiryId): array
-    {
-        return $this->findBy(['artistEnquiryId' => $artistEnquiryId], ['emailLogId' => 'DESC']);
-    }
-
-    /**
      * The emails sent about one order, newest first.
      *
      * @return list<AbstractEmailLogEntity>

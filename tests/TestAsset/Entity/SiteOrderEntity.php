@@ -14,7 +14,7 @@ use Contenir\Db\Model\Mapping\Table;
  * A site's own order entity: an extra "gift_message" column, and the items
  * relation redeclared to load the site's own order line entity.
  */
-#[Table('gallery_order')]
+#[Table('commerce_order')]
 final class SiteOrderEntity extends AbstractOrderEntity
 {
     #[Column('gift_message')]

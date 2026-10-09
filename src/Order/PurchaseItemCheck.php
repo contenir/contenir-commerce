@@ -6,15 +6,16 @@ namespace Contenir\Commerce\Order;
 
 use Contenir\Commerce\Exception\InvalidArgumentException;
 use Contenir\Commerce\Exception\PurchaseItemMismatchException;
-use Contenir\Commerce\Model\Entity\AbstractArtworkEntity;
+use Contenir\Commerce\Model\Entity\AbstractItemEntity;
+use Contenir\Commerce\Model\Entity\AbstractItemVariantEntity;
 
 use function in_array;
 use function sprintf;
 
 /**
  * Checks the items of a new order against each other and against their
- * artworks: each original can be sold once, so a work may appear in an
- * order once, and a caller's price or title is never trusted.
+ * stored variants: a variant appears in an order once, with its quantity,
+ * and a caller's price, title or label is never trusted.
  *
  * @internal
  */
@@ -23,40 +24,46 @@ final readonly class PurchaseItemCheck
     /**
      * @param list<PurchaseItem> $items
      *
-     * @throws InvalidArgumentException When a work appears more than once.
+     * @throws InvalidArgumentException When a variant appears more than once.
      */
     public function assertDistinct(array $items): void
     {
         $seen = [];
         foreach ($items as $item) {
-            if (in_array($item->artworkId, $seen, strict: true)) {
+            if (in_array($item->itemVariantId, $seen, strict: true)) {
                 throw new InvalidArgumentException(sprintf('"%s" appears in the order more than once', $item->title));
             }
 
-            $seen[] = $item->artworkId;
+            $seen[] = $item->itemVariantId;
         }
     }
 
     /**
-     * Each item must carry its artwork's stored price and, when the artwork
-     * maps a title (AbstractArtworkEntity::getTitle()), its title.
+     * Each item's unit price must equal its variant's, and its title and
+     * variant label must equal the item's title and the variant's label
+     * where those are set.
      *
-     * @param list<array{PurchaseItem, AbstractArtworkEntity}> $listed
+     * @param list<array{PurchaseItem, AbstractItemVariantEntity, AbstractItemEntity}> $listed
      *
-     * @throws PurchaseItemMismatchException When an item's price or title differs from its artwork's.
+     * @throws PurchaseItemMismatchException When an item's price, title or label differs from the stored one.
      * @throws InvalidArgumentException When a stored price is negative.
      */
     public function assertListed(array $listed): void
     {
-        foreach ($listed as [$item, $artwork]) {
-            $price = $artwork->getPrice();
-            if (! $price->equals($item->price)) {
+        foreach ($listed as [$item, $variant, $catalogueItem]) {
+            $price = $variant->getPrice();
+            if (! $price->equals($item->unitPrice)) {
                 throw PurchaseItemMismatchException::forPrice($item, $price);
             }
 
-            $title = $artwork->getTitle();
+            $title = $catalogueItem->getTitle();
             if (null !== $title && $title !== $item->title) {
                 throw PurchaseItemMismatchException::forTitle($item, $title);
+            }
+
+            $label = $variant->label;
+            if (null !== $label && $label !== $item->variantLabel) {
+                throw PurchaseItemMismatchException::forLabel($item, $label);
             }
         }
     }

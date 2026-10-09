@@ -7,10 +7,9 @@ namespace Contenir\Commerce\Tests\Integration\Container;
 use Contenir\Commerce\Clock\SystemClock;
 use Contenir\Commerce\Config\CommerceSettings;
 use Contenir\Commerce\ConfigProvider;
-use Contenir\Commerce\Model\Repository\ArtistEnquiryFileRepository;
-use Contenir\Commerce\Model\Repository\ArtistEnquiryRepository;
-use Contenir\Commerce\Model\Repository\ArtworkRepository;
 use Contenir\Commerce\Model\Repository\EmailLogRepository;
+use Contenir\Commerce\Model\Repository\ItemRepository;
+use Contenir\Commerce\Model\Repository\ItemVariantRepository;
 use Contenir\Commerce\Model\Repository\OrderItemRepository;
 use Contenir\Commerce\Model\Repository\OrderRepository;
 use Contenir\Commerce\Module;
@@ -20,6 +19,7 @@ use Contenir\Commerce\Order\CompletionOutcome;
 use Contenir\Commerce\Order\CompletionService;
 use Contenir\Commerce\Order\CustomerDetails;
 use Contenir\Commerce\Order\FulfilmentService;
+use Contenir\Commerce\Order\ItemInventory;
 use Contenir\Commerce\Order\OrderManager;
 use Contenir\Commerce\Order\PurchaseItem;
 use Contenir\Commerce\Payment\PaymentGatewayInterface;
@@ -54,17 +54,17 @@ final class ContainerWiringTest extends TestCase
     public static function serviceProvider(): array
     {
         return [
-            'artworks'             => [ArtworkRepository::class],
-            'orders'               => [OrderRepository::class],
-            'order items'          => [OrderItemRepository::class],
-            'artist enquiries'     => [ArtistEnquiryRepository::class],
-            'artist enquiry files' => [ArtistEnquiryFileRepository::class],
-            'email log'            => [EmailLogRepository::class],
-            'order manager'        => [OrderManager::class],
-            'commerce settings'    => [CommerceSettings::class],
-            'checkout service'     => [CheckoutService::class],
-            'completion service'   => [CompletionService::class],
-            'fulfilment service'   => [FulfilmentService::class],
+            'items'              => [ItemRepository::class],
+            'item variants'      => [ItemVariantRepository::class],
+            'orders'             => [OrderRepository::class],
+            'order items'        => [OrderItemRepository::class],
+            'item inventory'     => [ItemInventory::class],
+            'email log'          => [EmailLogRepository::class],
+            'order manager'      => [OrderManager::class],
+            'commerce settings'  => [CommerceSettings::class],
+            'checkout service'   => [CheckoutService::class],
+            'completion service' => [CompletionService::class],
+            'fulfilment service' => [FulfilmentService::class],
         ];
     }
 
@@ -123,9 +123,9 @@ final class ContainerWiringTest extends TestCase
     }
 
     #[Test]
-    public function theWiredCompletionClaimsWorksInsideTheEntityManagersTransaction(): void
+    public function theWiredCompletionClaimsStockInsideTheEntityManagersTransaction(): void
     {
-        $this->insert('artwork', ['price' => 3_500, 'status' => 'available']);
+        $this->insertTote();
         $gateway   = new FakePaymentGateway();
         $container = $this->container([]);
         $container->setService(PaymentGatewayInterface::class, $gateway);
@@ -138,10 +138,10 @@ final class ContainerWiringTest extends TestCase
         $gateway->completeSession('cs_fake_1', 'pi_fake_1');
 
         static::assertSame(
-            [CompletionOutcome::Completed, 'sold'],
+            [CompletionOutcome::Completed, 9],
             [
                 $manager->completeFromCheckoutSession('cs_fake_1')->outcome,
-                $this->column('artwork', 'status', 'artwork_id', 1),
+                $this->column('item_variant', 'stock', 'item_variant_id', 1),
             ],
         );
     }
@@ -149,7 +149,7 @@ final class ContainerWiringTest extends TestCase
     #[Test]
     public function theWiredOrderManagerWritesThroughTheSharedEntityManager(): void
     {
-        $this->insert('artwork', ['price' => 3_500, 'status' => 'available']);
+        $this->insertTote();
         $manager = $this->container([])->get(OrderManager::class);
 
         $order = $manager->createPendingOrder(
@@ -157,7 +157,7 @@ final class ContainerWiringTest extends TestCase
             new CustomerDetails('Avery Buyer', 'avery@example.test'),
         );
 
-        static::assertSame(3_500, $this->column('gallery_order', 'total', 'order_id', $order->getId()));
+        static::assertSame(3_500, $this->column('commerce_order', 'total', 'order_id', $order->getId()));
     }
 
     #[Override]
@@ -181,5 +181,11 @@ final class ContainerWiringTest extends TestCase
         ];
 
         return new ServiceManager($dependencies);
+    }
+
+    private function insertTote(): void
+    {
+        $this->insert('item', ['title' => 'Tote bag', 'status' => 'listed']);
+        $this->insert('item_variant', ['item_id' => 1, 'price' => 3_500, 'stock' => 10]);
     }
 }

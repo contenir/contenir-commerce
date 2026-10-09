@@ -6,15 +6,16 @@ namespace Contenir\Commerce\Tests\Trait;
 
 use Contenir\Commerce\Config\CommerceSettings;
 use Contenir\Commerce\Model\Entity\AbstractOrderEntity;
-use Contenir\Commerce\Model\Repository\ArtworkRepository;
+use Contenir\Commerce\Model\Repository\ItemRepository;
+use Contenir\Commerce\Model\Repository\ItemVariantRepository;
 use Contenir\Commerce\Model\Repository\OrderItemRepository;
 use Contenir\Commerce\Model\Repository\OrderRepository;
 use Contenir\Commerce\Money\Money;
-use Contenir\Commerce\Order\ArtworkReservation;
 use Contenir\Commerce\Order\CheckoutService;
 use Contenir\Commerce\Order\CompletionService;
 use Contenir\Commerce\Order\CustomerDetails;
 use Contenir\Commerce\Order\FulfilmentService;
+use Contenir\Commerce\Order\ItemInventory;
 use Contenir\Commerce\Order\OrderStore;
 use Contenir\Commerce\Order\PurchaseItem;
 use Contenir\Commerce\Order\PurchaseItemCheck;
@@ -26,14 +27,15 @@ use Contenir\Db\Model\Type\TypeRegistry;
 
 /**
  * The three order services over a fresh in-memory database, a scriptable
- * gateway and a movable clock. Artworks 1 and 2 are available, priced
- * 1,850.00 and 980.00. Call setUpOrderServices() from setUp().
+ * gateway and a movable clock. Items 1 and 2 are listed, each with one
+ * variant (1 and 2) of a single unit, priced 1,850.00 and 980.00. Call
+ * setUpOrderServices() from setUp().
  */
 trait OrderServicesTrait
 {
     use SqliteDatabaseTrait;
 
-    private ArtworkRepository $artworks;
+    private ItemVariantRepository $variants;
 
     private CheckoutService $checkout;
 
@@ -44,21 +46,6 @@ trait OrderServicesTrait
     private FulfilmentService $fulfilment;
 
     private FakePaymentGateway $gateway;
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function artworkRow(int $artworkId): array
-    {
-        $row = $this->row('artwork', 'artwork_id', $artworkId);
-
-        return ['status' => $row['status'], 'updated' => $row['updated']];
-    }
-
-    private function artworkStatus(int $artworkId): mixed
-    {
-        return $this->column('artwork', 'status', 'artwork_id', $artworkId);
-    }
 
     private function buyer(string $name): CustomerDetails
     {
@@ -74,12 +61,12 @@ trait OrderServicesTrait
     }
 
     private function checkoutWith(
-        ArtworkRepository $artworks,
+        ItemRepository $items,
         CommerceSettings $settings = new CommerceSettings(),
     ): CheckoutService {
         return new CheckoutService(
             $this->store(),
-            new ArtworkReservation($artworks),
+            new ItemInventory($items, $this->variants),
             new PurchaseItemCheck(),
             $this->gateway,
             $settings,
@@ -90,7 +77,7 @@ trait OrderServicesTrait
     {
         return new CompletionService(
             $this->store(),
-            new ArtworkReservation($this->artworks),
+            new ItemInventory(new ItemRepository($this->em), $this->variants),
             new Refunder($gateway),
             $gateway,
         );
@@ -107,8 +94,8 @@ trait OrderServicesTrait
     private function items(): array
     {
         return [
-            new PurchaseItem(1, 'Headland, Dawn', Money::fromCents(185_000), 'June Hollis'),
-            new PurchaseItem(2, 'Swan Bay Nocturne', Money::fromCents(98_000), 'Marcus Tran'),
+            new PurchaseItem(1, 'Headland, Dawn', Money::fromCents(185_000), description: 'June Hollis'),
+            new PurchaseItem(2, 'Swan Bay Nocturne', Money::fromCents(98_000), description: 'Marcus Tran'),
         ];
     }
 
@@ -117,14 +104,17 @@ trait OrderServicesTrait
      */
     private function lineRow(int $orderItemId): array
     {
-        $row = $this->row('gallery_order_item', 'order_item_id', $orderItemId);
+        $row = $this->row('commerce_order_item', 'order_item_id', $orderItemId);
 
         return [
             $row['order_id'],
-            $row['artwork_id'],
+            $row['item_id'],
+            $row['item_variant_id'],
             $row['title'],
-            $row['artist_name'],
-            $row['price'],
+            $row['variant_label'],
+            $row['description'],
+            $row['unit_price'],
+            $row['quantity'],
             $row['created'],
         ];
     }
@@ -136,7 +126,7 @@ trait OrderServicesTrait
      */
     private function orderRow(array $columns, int $orderId = 1): array
     {
-        $row      = $this->row('gallery_order', 'order_id', $orderId);
+        $row      = $this->row('commerce_order', 'order_id', $orderId);
         $selected = [];
         foreach ($columns as $column) {
             $selected[$column] = $row[$column];
@@ -154,15 +144,18 @@ trait OrderServicesTrait
     }
 
     /**
-     * A second buyer carted work 1 before the first paid for it, and pays
-     * through session cs_fake_2.
+     * A second buyer carted variant 1 before the first paid for its only
+     * unit, and pays through session cs_fake_2.
      */
     private function secondBuyerPays(?string $paymentIntentId = 'pi_second'): void
     {
-        $this->updateBehindTheManager("UPDATE artwork SET status = 'available' WHERE artwork_id = 1");
-        $second = $this->checkout->createPendingOrder([CommerceFactory::item(1)], $this->buyer('Second Buyer'));
+        $this->updateBehindTheManager('UPDATE item_variant SET stock = 1 WHERE item_variant_id = 1');
+        $second = $this->checkout->createPendingOrder(
+            [CommerceFactory::purchaseItem(1)],
+            $this->buyer('Second Buyer'),
+        );
         $this->checkout->beginCheckout($second, 'https://example.test/thanks', 'https://example.test/cart');
-        $this->updateBehindTheManager("UPDATE artwork SET status = 'sold' WHERE artwork_id = 1");
+        $this->updateBehindTheManager('UPDATE item_variant SET stock = 0 WHERE item_variant_id = 1');
         $this->gateway->completeSession('cs_fake_2', $paymentIntentId);
     }
 
@@ -171,13 +164,15 @@ trait OrderServicesTrait
         $this->setUpDatabase();
         $this->clock      = new MovableClock('2026-08-20 10:00:00');
         $this->gateway    = new FakePaymentGateway();
-        $this->artworks   = new ArtworkRepository($this->em, $this->adapter, TypeRegistry::withDefaults());
-        $this->checkout   = $this->checkoutWith($this->artworks);
+        $this->variants   = new ItemVariantRepository($this->em, $this->adapter, TypeRegistry::withDefaults());
+        $this->checkout   = $this->checkoutWith(new ItemRepository($this->em));
         $this->completion = $this->completionWith($this->gateway);
         $this->fulfilment = $this->fulfilmentWith($this->gateway);
 
-        foreach ([185_000, 98_000] as $price) {
-            $this->em->save(CommerceFactory::artwork($price));
+        foreach (['Headland, Dawn' => 185_000, 'Swan Bay Nocturne' => 98_000] as $title => $price) {
+            $item = CommerceFactory::item($title);
+            $this->em->save($item);
+            $this->em->save(CommerceFactory::variant((int) $item->itemId, $price));
         }
     }
 
@@ -189,5 +184,20 @@ trait OrderServicesTrait
             new OrderItemRepository($this->em),
             $this->clock,
         );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function variantRow(int $itemVariantId): array
+    {
+        $row = $this->row('item_variant', 'item_variant_id', $itemVariantId);
+
+        return ['stock' => $row['stock'], 'updated' => $row['updated']];
+    }
+
+    private function variantStock(int $itemVariantId): mixed
+    {
+        return $this->column('item_variant', 'stock', 'item_variant_id', $itemVariantId);
     }
 }

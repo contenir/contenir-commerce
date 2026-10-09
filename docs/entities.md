@@ -5,15 +5,14 @@ Each table has an abstract base class holding its columns and behaviour, and a f
 
 | Table | Abstract base | Default entity | Repository | Config key |
 | --- | --- | --- | --- | --- |
-| `artwork` | `AbstractArtworkEntity` | `ArtworkEntity` | `ArtworkRepository` | `artwork_entity` |
-| `gallery_order` | `AbstractOrderEntity` | `OrderEntity` | `OrderRepository` | `order_entity` |
-| `gallery_order_item` | `AbstractOrderItemEntity` | `OrderItemEntity` | `OrderItemRepository` | `order_item_entity` |
-| `artist_enquiry` | `AbstractArtistEnquiryEntity` | `ArtistEnquiryEntity` | `ArtistEnquiryRepository` | `artist_enquiry_entity` |
-| `artist_enquiry_file` | `AbstractArtistEnquiryFileEntity` | `ArtistEnquiryFileEntity` | `ArtistEnquiryFileRepository` | `artist_enquiry_file_entity` |
+| `item` | `AbstractItemEntity` | `ItemEntity` | `ItemRepository` | `item_entity` |
+| `item_variant` | `AbstractItemVariantEntity` | `ItemVariantEntity` | `ItemVariantRepository` | `item_variant_entity` |
+| `commerce_order` | `AbstractOrderEntity` | `OrderEntity` | `OrderRepository` | `order_entity` |
+| `commerce_order_item` | `AbstractOrderItemEntity` | `OrderItemEntity` | `OrderItemRepository` | `order_item_entity` |
 | `email_log` | `AbstractEmailLogEntity` | `EmailLogEntity` | `EmailLogRepository` | `email_log_entity` |
 
 All in `Contenir\Commerce\Model\Entity`; the keys are under `contenir_commerce`. The columns of each table are listed
-in [artworks](artworks.md), [enquiries](enquiries.md) and, for orders and their lines, the entity tables of
+in [items](items.md), [the email log](email-log.md) and, for orders and their lines, the entity tables of
 [UPGRADE-2.0.md](../UPGRADE-2.0.md#entities).
 
 ## Adding columns
@@ -23,48 +22,43 @@ in [artworks](artworks.md), [enquiries](enquiries.md) and, for orders and their 
 2. Extend the abstract base with a final class carrying the same `#[Table]`, and map the column:
 
    ```php
-   use Contenir\Commerce\Model\Entity\AbstractArtworkEntity;
+   use Contenir\Commerce\Model\Entity\AbstractItemEntity;
    use Contenir\Db\Model\Mapping\Column;
    use Contenir\Db\Model\Mapping\Table;
-   use Override;
 
-   #[Table('artwork')]
-   final class Artwork extends AbstractArtworkEntity
+   #[Table('item')]
+   final class Artwork extends AbstractItemEntity
    {
+       #[Column('artist_resource_id')]
+       public ?int $artistResourceId = null;
+
        #[Column]
-       public ?string $title = null;
-
-       #[Column('frame_colour')]
-       public ?string $frameColour = null;
-
-       // Optional: new orders then check each item's title against this.
-       #[Override]
-       public function getTitle(): ?string
-       {
-           return $this->title;
-       }
+       public ?string $medium = null;
    }
    ```
 
 3. Point the repository at it:
 
    ```php
-   'contenir_commerce' => ['artwork_entity' => App\Entity\Artwork::class],
+   'contenir_commerce' => ['item_entity' => App\Entity\Artwork::class],
    ```
 
-`ArtworkRepository` then hydrates `App\Entity\Artwork` everywhere: in its finders, in the availability checks and in
+`ItemRepository` then hydrates `App\Entity\Artwork` everywhere: in its finders, in the availability checks and in
 `newEntity()`. The package's own services only read and write the base columns; your columns are yours to set.
 Entities are created with no constructor arguments (`newEntity()`, and contenir-db-model's hydration), so keep any
 constructor of your own argument-free.
 
+When the item's title lives elsewhere (a CMS page, say), override `getTitle()` to return it, and new orders check
+purchase item titles against that instead of the `title` column.
+
 ## Relations
 
-`AbstractOrderEntity::$items` and `AbstractArtistEnquiryEntity::$files` are declared with the default line and file
-entities. If you configure your own order item (or enquiry file) entity, configure your own order (or enquiry) entity
-too and redeclare the relation with your class:
+`AbstractOrderEntity::$items` and `AbstractItemEntity::$variants` are declared with the default line and variant
+entities. If you configure your own order item (or variant) entity, configure your own order (or item) entity too and
+redeclare the relation with your class:
 
 ```php
-#[Table('gallery_order')]
+#[Table('commerce_order')]
 final class Order extends AbstractOrderEntity
 {
     /** @var Collection<OrderLine> */

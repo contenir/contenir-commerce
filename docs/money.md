@@ -84,5 +84,6 @@ name whatever the tax is called).
 
 Both extend the SPL exception of the same name and implement `Exception\ExceptionInterface`.
 
-Entities store amounts as `int` cents (`ArtworkEntity::$price`, `OrderEntity::$total`, `OrderEntity::$gstAmount`,
-`OrderItemEntity::$price`); `getPrice()`, `getTotal()` and `getGstAmount()` return them as `Money`.
+Entities store amounts as `int` cents (`ItemVariantEntity::$price`, `OrderEntity::$total`, `OrderEntity::$gstAmount`,
+`OrderItemEntity::$unitPrice`); `getPrice()`, `getUnitPrice()`, `getTotal()` and `getGstAmount()` return them as
+`Money`.

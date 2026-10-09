@@ -4,10 +4,9 @@ declare(strict_types=1);
 
 namespace Contenir\Commerce\Tests\Unit\Model\Entity;
 
-use Contenir\Commerce\Model\Entity\ArtistEnquiryEntity;
-use Contenir\Commerce\Model\Entity\ArtistEnquiryFileEntity;
-use Contenir\Commerce\Model\Entity\ArtworkEntity;
 use Contenir\Commerce\Model\Entity\EmailLogEntity;
+use Contenir\Commerce\Model\Entity\ItemEntity;
+use Contenir\Commerce\Model\Entity\ItemVariantEntity;
 use Contenir\Commerce\Model\Entity\OrderEntity;
 use Contenir\Commerce\Model\Entity\OrderItemEntity;
 use Contenir\Db\Model\Metadata\AttributeMetadataFactory;
@@ -27,29 +26,29 @@ final class EntityMappingTest extends TestCase
     public static function entityProvider(): array
     {
         return [
-            'artwork'             => [
-                ArtworkEntity::class,
-                'artwork',
+            'item'         => [
+                ItemEntity::class,
+                'item',
+                ['item_id', 'title', 'description', 'status', 'created', 'updated'],
+            ],
+            'item variant' => [
+                ItemVariantEntity::class,
+                'item_variant',
                 [
-                    'artwork_id',
-                    'resource_id',
-                    'artist_resource_id',
-                    'exhibition_resource_id',
-                    'item_type',
+                    'item_variant_id',
+                    'item_id',
+                    'label',
+                    'sku',
                     'price',
-                    'status',
-                    'medium',
-                    'dimensions',
-                    'year',
-                    'edition_details',
-                    'external_sale_url',
+                    'stock',
+                    'sequence',
                     'created',
                     'updated',
                 ],
             ],
-            'order'               => [
+            'order'        => [
                 OrderEntity::class,
-                'gallery_order',
+                'commerce_order',
                 [
                     'order_id',
                     'order_ref',
@@ -71,44 +70,28 @@ final class EntityMappingTest extends TestCase
                     'updated',
                 ],
             ],
-            'order item'          => [
+            'order item'   => [
                 OrderItemEntity::class,
-                'gallery_order_item',
-                ['order_item_id', 'order_id', 'artwork_id', 'title', 'artist_name', 'price', 'created'],
-            ],
-            'artist enquiry'      => [
-                ArtistEnquiryEntity::class,
-                'artist_enquiry',
+                'commerce_order_item',
                 [
-                    'artist_enquiry_id',
-                    'name',
-                    'email',
-                    'telephone',
-                    'website',
-                    'instagram',
-                    'bio',
-                    'statement',
-                    'medium',
-                    'preferred_timing',
-                    'how_heard',
-                    'status',
-                    'staff_notes',
+                    'order_item_id',
+                    'order_id',
+                    'item_id',
+                    'item_variant_id',
+                    'title',
+                    'variant_label',
+                    'description',
+                    'unit_price',
+                    'quantity',
                     'created',
-                    'updated',
                 ],
             ],
-            'artist enquiry file' => [
-                ArtistEnquiryFileEntity::class,
-                'artist_enquiry_file',
-                ['artist_enquiry_file_id', 'artist_enquiry_id', 'filename', 'path', 'mime_type', 'size', 'created'],
-            ],
-            'email log'           => [
+            'email log'    => [
                 EmailLogEntity::class,
                 'email_log',
                 [
                     'email_log_id',
                     'order_id',
-                    'artist_enquiry_id',
                     'recipient',
                     'subject',
                     'message_class',
@@ -142,10 +125,10 @@ final class EntityMappingTest extends TestCase
         $factory = new AttributeMetadataFactory();
 
         static::assertSame(
-            [['items'], ['files']],
+            [['items'], ['variants']],
             [
                 array_keys($factory->getMetadataFor(OrderEntity::class)->relations),
-                array_keys($factory->getMetadataFor(ArtistEnquiryEntity::class)->relations),
+                array_keys($factory->getMetadataFor(ItemEntity::class)->relations),
             ],
         );
     }

@@ -10,12 +10,12 @@ use function implode;
 use function sprintf;
 
 /**
- * One or more works in an order have been sold, withdrawn or deleted since
- * they were carted.
+ * One or more items in an order have sold out, been unlisted or been
+ * deleted since they were carted.
  *
  * @api
  */
-final class ArtworkUnavailableException extends RuntimeException implements ExceptionInterface
+final class ItemUnavailableException extends RuntimeException implements ExceptionInterface
 {
     /**
      * @param list<string> $titles
