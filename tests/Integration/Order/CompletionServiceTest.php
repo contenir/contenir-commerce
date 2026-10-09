@@ -205,15 +205,16 @@ final class CompletionServiceTest extends TestCase
     public function aVariantDeletedBeforePaymentIsReportedLostAndRefunded(): void
     {
         $this->checkedOutOrder();
-        $this->updateBehindTheManager('DELETE FROM item_variant WHERE item_variant_id = 2');
+        $this->updateBehindTheManager('DELETE FROM item_variant WHERE item_variant_id = 1');
+        $this->updateBehindTheManager('UPDATE item_variant SET stock = 0 WHERE item_variant_id = 2');
         $this->em->clear();
         $this->gateway->completeSession('cs_fake_1', 'pi_fake_1');
 
         $result = $this->completion->completeFromCheckoutSession('cs_fake_1');
 
         static::assertSame(
-            [CompletionOutcome::RefundedRace, ['Swan Bay Nocturne'], 1],
-            [$result->outcome, $result->unavailableTitles, $this->variantStock(1)],
+            [CompletionOutcome::RefundedRace, ['Headland, Dawn', 'Swan Bay Nocturne']],
+            [$result->outcome, $result->unavailableTitles],
         );
     }
 
