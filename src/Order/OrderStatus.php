@@ -9,8 +9,9 @@ use Contenir\Commerce\Exception\InvalidTransitionException;
 use function in_array;
 
 /**
- * Order lifecycle. Prices are captured at sale time; refunds after collection
- * exist only for the private artist-and-buyer arrangements allowed by policy.
+ * Order lifecycle. Prices are captured at sale time; an order can still be
+ * refunded after collection, for returns and arrangements made outside the
+ * shop.
  *
  * @api
  */

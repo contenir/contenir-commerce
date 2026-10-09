@@ -59,7 +59,7 @@ final readonly class OrderStore
 
     /**
      * The order's lines as purchase items, in the order they were added. A
-     * line whose artwork has since been deleted has artwork id 0.
+     * line whose variant has since been deleted has variant id 0.
      *
      * @return list<PurchaseItem>
      *
@@ -71,10 +71,12 @@ final readonly class OrderStore
     {
         return array_map(
             static fn(AbstractOrderItemEntity $line): PurchaseItem => new PurchaseItem(
-                $line->artworkId ?? 0,
+                $line->itemVariantId ?? 0,
                 $line->title,
-                $line->getPrice(),
-                $line->artistName,
+                $line->getUnitPrice(),
+                $line->quantity,
+                $line->variantLabel,
+                $line->description,
             ),
             $this->orderItems->findByOrderId($order->getId()),
         );

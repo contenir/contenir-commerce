@@ -3,7 +3,103 @@
 2.0 moves the package to contenir-db-model 2 and renames it. The 0.2 line stays available from the `0.2.x` branch
 and the `v0.*` tags under the old name, `contenir/commerce`.
 
-The database tables and columns are unchanged: no migration is needed.
+From 0.2 to 2.0.0-RC2 the database tables and columns are unchanged. 2.0.0-RC3 replaces the gallery's artworks with
+items and variants, and renames the order tables: see below.
+
+## From 2.0.0-RC2 to 2.0.0-RC3
+
+RC3 makes the package sell anything, not only artworks. An **item** is what is sold; its **variants** are the
+versions a buyer chooses, each with its own price and stock (see [docs/items.md](docs/items.md)). Gallery-specific
+classes and columns leave the package; a gallery keeps them in its own entities.
+
+### Classes
+
+| RC2 | RC3 |
+| --- | --- |
+| `Model\Entity\AbstractArtworkEntity`, `ArtworkEntity` (`artwork`) | `AbstractItemEntity`, `ItemEntity` (`item`) and `AbstractItemVariantEntity`, `ItemVariantEntity` (`item_variant`) |
+| `Model\Repository\ArtworkRepository` | `ItemRepository` and `ItemVariantRepository` |
+| `ArtworkRepository::claim($artworkId, $at)` | `ItemVariantRepository::claim($itemVariantId, $quantity, $at)` |
+| `findAvailableOngoing()`, `findByArtistResourceId()`, `findByExhibitionResourceId()`, `findByResourceIds()` | Removed: gallery finders belong to the site |
+| `Artwork\ArtworkStatus` (`available`, `sold`) | `Item\ItemStatus` (`listed`, `unlisted`); sold is a variant's stock of 0 |
+| `Artwork\ItemType` | Removed |
+| `Order\ArtworkReservation`, `ArtworkReservationFactory` (internal) | `Order\ItemInventory`, `ItemInventoryFactory` (internal) |
+| `Exception\ArtworkUnavailableException` | `Exception\ItemUnavailableException` |
+| `PurchaseItemMismatchException::getArtworkId()` | `getItemVariantId()`; new `forLabel()` |
+| `Model\Entity\*ArtistEnquiry*`, `ArtistEnquiry*Repository`, `Enquiry\EnquiryStatus` | Removed: enquiries are a site's own form submissions |
+| `EmailLogEntity::$artistEnquiryId`, `EmailLogRepository::findByArtistEnquiryId()` | Removed |
+| `CommerceSettings::DEFAULT_ORDER_REFERENCE_PREFIX` `LR` | `ORD`: set `order_reference_prefix` to keep your own |
+
+### Purchase items and order lines
+
+```php
+// RC2
+new PurchaseItem($artworkId, $title, $price, $artistName);
+
+// RC3: a quantity of one variant
+new PurchaseItem($variantId, $title, $unitPrice, quantity: 1, variantLabel: null, description: $artistName);
+```
+
+`PurchaseItem::$artworkId`, `$price` and `$artistName` are now `$itemVariantId`, `$unitPrice` and `$description`;
+`getTotal()` multiplies by the quantity. New orders check the title against the item's `getTitle()`, which now
+returns the `title` column (null skips the check, as before), and a variant label against the variant's `label`.
+
+`AbstractOrderItemEntity` has `$itemId`, `$itemVariantId`, `$title`, `$variantLabel`, `$description`, `$unitPrice`
+and `$quantity`; `getPrice()` is now `getUnitPrice()`, and `getTotal()` is new.
+
+### Configuration
+
+`artwork_entity` is replaced by `item_entity` and `item_variant_entity`; `artist_enquiry_entity` and
+`artist_enquiry_file_entity` are gone.
+
+### Database
+
+Create `item` and `item_variant`, rename the order tables and reshape the order lines. An outline for MySQL, which
+gives each artwork one item and one unlabelled variant with the artwork's id, so that existing ids stay valid:
+
+```sql
+CREATE TABLE item (
+  item_id int unsigned NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  title varchar(255) DEFAULT NULL,
+  description text,
+  status enum('listed','unlisted') NOT NULL DEFAULT 'listed',
+  created datetime DEFAULT CURRENT_TIMESTAMP,
+  updated datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE item_variant (
+  item_variant_id int unsigned NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  item_id int unsigned NOT NULL,
+  label varchar(255) DEFAULT NULL,
+  sku varchar(255) DEFAULT NULL,
+  price int unsigned NOT NULL DEFAULT 0,
+  stock int unsigned DEFAULT NULL,
+  sequence int NOT NULL DEFAULT 0,
+  created datetime DEFAULT CURRENT_TIMESTAMP,
+  updated datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY item_id (item_id),
+  FOREIGN KEY (item_id) REFERENCES item (item_id) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+INSERT INTO item (item_id, status, created, updated)
+  SELECT artwork_id, 'listed', created, updated FROM artwork;
+INSERT INTO item_variant (item_variant_id, item_id, price, stock, created, updated)
+  SELECT artwork_id, artwork_id, price, IF(status = 'sold', 0, 1), created, updated FROM artwork;
+
+-- Drop the order lines' foreign key onto artwork first (its name is in SHOW CREATE TABLE).
+RENAME TABLE gallery_order TO commerce_order, gallery_order_item TO commerce_order_item;
+ALTER TABLE commerce_order_item
+  CHANGE artwork_id item_id int unsigned DEFAULT NULL,
+  ADD item_variant_id int unsigned DEFAULT NULL AFTER item_id,
+  ADD variant_label varchar(255) DEFAULT NULL AFTER title,
+  CHANGE artist_name description varchar(255) DEFAULT NULL,
+  CHANGE price unit_price int unsigned NOT NULL DEFAULT 0,
+  ADD quantity int unsigned NOT NULL DEFAULT 1 AFTER unit_price;
+UPDATE commerce_order_item SET item_variant_id = item_id;
+```
+
+Move any artwork columns the site still needs (an artist, an exhibition, a medium) onto `item` and map them on a site
+item entity (see [docs/entities.md](docs/entities.md)), then drop `artwork`. `email_log.artist_enquiry_id` and the
+enquiry tables can stay for the site's own use; the package no longer maps them.
 
 ## From 2.0.0-RC1 to 2.0.0-RC2
 

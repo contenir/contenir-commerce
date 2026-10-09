@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Contenir\Commerce\Tests\Integration\Order;
 
-use Contenir\Commerce\Artwork\ArtworkStatus;
 use Contenir\Commerce\Exception\OrderNotFoundException;
 use Contenir\Commerce\Exception\PaymentFailedException;
 use Contenir\Commerce\Order\CompletionOutcome;
@@ -55,7 +54,7 @@ final class CompletionServiceTest extends TestCase
                     'cancelled_at'             => '2026-08-20 10:05:00',
                     'updated'                  => '2026-08-20 10:10:00',
                 ],
-                'available',
+                1,
             ],
             [
                 $result->outcome,
@@ -68,7 +67,7 @@ final class CompletionServiceTest extends TestCase
                     'cancelled_at',
                     'updated',
                 ]),
-                $this->artworkStatus(1),
+                $this->variantStock(1),
             ],
         );
     }
@@ -131,16 +130,31 @@ final class CompletionServiceTest extends TestCase
     }
 
     #[Test]
+    public function anItemSoldBehindTheManagersBackIsStillCaughtAtCompletion(): void
+    {
+        $this->checkedOutOrder();
+        $this->updateBehindTheManager('UPDATE item_variant SET stock = 0 WHERE item_variant_id = 2');
+        $this->gateway->completeSession('cs_fake_1', 'pi_fake_1');
+
+        $result = $this->completion->completeFromCheckoutSession('cs_fake_1');
+
+        static::assertSame(
+            [CompletionOutcome::RefundedRace, ['Swan Bay Nocturne'], 1],
+            [$result->outcome, $result->unavailableTitles, $this->variantStock(1)],
+        );
+    }
+
+    #[Test]
     public function anOrderStillOpenAtStripeIsNotPaid(): void
     {
         $this->checkedOutOrder();
 
         static::assertSame(
-            [CompletionOutcome::NotPaid, 'pending', 'available'],
+            [CompletionOutcome::NotPaid, 'pending', 1],
             [
                 $this->completion->completeFromCheckoutSession('cs_fake_1')->outcome,
                 $this->orderRow(['status'])['status'],
-                $this->artworkStatus(1),
+                $this->variantStock(1),
             ],
         );
     }
@@ -152,7 +166,7 @@ final class CompletionServiceTest extends TestCase
         $this->secondBuyerPays(null);
 
         $this->expectException(PaymentFailedException::class);
-        $this->expectExceptionMessage('Order "LR-2026-0002" has no Stripe payment to refund');
+        $this->expectExceptionMessage('Order "ORD-2026-0002" has no Stripe payment to refund');
 
         $this->completion->completeFromCheckoutSession('cs_fake_2');
     }
@@ -166,8 +180,8 @@ final class CompletionServiceTest extends TestCase
         $result = $this->completion->completeFromCheckoutSession('cs_fake_1');
 
         static::assertSame(
-            [CompletionOutcome::NotPaid, ['status' => 'pending', 'stripe_payment_intent_id' => null], 'available'],
-            [$result->outcome, $this->orderRow(['status', 'stripe_payment_intent_id']), $this->artworkStatus(1)],
+            [CompletionOutcome::NotPaid, ['status' => 'pending', 'stripe_payment_intent_id' => null], 1],
+            [$result->outcome, $this->orderRow(['status', 'stripe_payment_intent_id']), $this->variantStock(1)],
         );
     }
 
@@ -188,22 +202,7 @@ final class CompletionServiceTest extends TestCase
     }
 
     #[Test]
-    public function aWorkSoldBehindTheManagersBackIsStillCaughtAtCompletion(): void
-    {
-        $this->checkedOutOrder();
-        $this->updateBehindTheManager("UPDATE artwork SET status = 'sold' WHERE artwork_id = 2");
-        $this->gateway->completeSession('cs_fake_1', 'pi_fake_1');
-
-        $result = $this->completion->completeFromCheckoutSession('cs_fake_1');
-
-        static::assertSame(
-            [CompletionOutcome::RefundedRace, ['Swan Bay Nocturne'], 'available'],
-            [$result->outcome, $result->unavailableTitles, $this->artworkStatus(1)],
-        );
-    }
-
-    #[Test]
-    public function completingMarksTheOrderPaidAndTheWorksSold(): void
+    public function completingMarksTheOrderPaidAndTakesTheStock(): void
     {
         $this->checkedOutOrder();
         $this->gateway->completeSession('cs_fake_1', 'pi_fake_1');
@@ -221,31 +220,31 @@ final class CompletionServiceTest extends TestCase
                     'paid_at'                  => '2026-08-20 10:20:00',
                     'updated'                  => '2026-08-20 10:20:00',
                 ],
-                ['status' => 'sold', 'updated' => '2026-08-20 10:20:00'],
-                ['status' => 'sold', 'updated' => '2026-08-20 10:20:00'],
+                ['stock' => 0, 'updated' => '2026-08-20 10:20:00'],
+                ['stock' => 0, 'updated' => '2026-08-20 10:20:00'],
                 [],
             ],
             [
                 $result->outcome,
                 $result->unavailableTitles,
                 $this->orderRow(['status', 'stripe_payment_intent_id', 'paid_at', 'updated']),
-                $this->artworkRow(1),
-                $this->artworkRow(2),
+                $this->variantRow(1),
+                $this->variantRow(2),
                 $this->gateway->refunds,
             ],
         );
     }
 
     #[Test]
-    public function completingUpdatesArtworksTheEntityManagerAlreadyHolds(): void
+    public function completingUpdatesVariantsTheEntityManagerAlreadyHolds(): void
     {
-        $held = $this->artworks->find(1);
+        $held = $this->variants->find(1);
         $this->checkedOutOrder();
         $this->gateway->completeSession('cs_fake_1', 'pi_fake_1');
 
         $this->completion->completeFromCheckoutSession('cs_fake_1');
 
-        static::assertSame(ArtworkStatus::Sold, $held?->status);
+        static::assertSame(0, $held?->stock);
     }
 
     #[Test]

@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace Contenir\Commerce\Tests\Unit\Model\Entity;
 
-use Contenir\Commerce\Artwork\ArtworkStatus;
 use Contenir\Commerce\Exception\OrderNotFoundException;
-use Contenir\Commerce\Model\Entity\ArtworkEntity;
+use Contenir\Commerce\Item\ItemStatus;
+use Contenir\Commerce\Model\Entity\ItemEntity;
+use Contenir\Commerce\Model\Entity\ItemVariantEntity;
 use Contenir\Commerce\Model\Entity\OrderEntity;
 use Contenir\Commerce\Model\Entity\OrderItemEntity;
 use Contenir\Commerce\Tests\TestAsset\Factory\CommerceFactory;
@@ -19,27 +20,44 @@ use PHPUnit\Framework\TestCase;
 final class EntityAccessorsTest extends TestCase
 {
     /**
-     * @return array<string, array{ArtworkStatus, bool}>
+     * @return array<string, array{ItemStatus, bool}>
      */
-    public static function availabilityProvider(): array
+    public static function listingProvider(): array
     {
         return [
-            'available' => [ArtworkStatus::Available, true],
-            'sold'      => [ArtworkStatus::Sold, false],
+            'listed'   => [ItemStatus::Listed, true],
+            'unlisted' => [ItemStatus::Unlisted, false],
         ];
     }
 
-    #[DataProvider('availabilityProvider')]
-    #[Test]
-    public function anArtworkIsAvailableOnlyWhileUnsold(ArtworkStatus $status, bool $available): void
+    /**
+     * @return array<string, array{?int, int, bool}>
+     */
+    public static function stockProvider(): array
     {
-        static::assertSame($available, CommerceFactory::artwork(status: $status)->isAvailable());
+        return [
+            'untracked, any quantity' => [null, 1_000, true],
+            'exactly enough'          => [3, 3, true],
+            'more than enough'        => [3, 1, true],
+            'one short'               => [3, 4, false],
+            'sold out'                => [0, 1, false],
+        ];
+    }
+
+    #[DataProvider('listingProvider')]
+    #[Test]
+    public function anItemIsListedOnlyWhileItsStatusSaysSo(ItemStatus $status, bool $listed): void
+    {
+        static::assertSame($listed, CommerceFactory::item(status: $status)->isListed());
     }
 
     #[Test]
-    public function anArtworkPriceIsMoney(): void
+    public function anItemsTitleIsItsTitleColumn(): void
     {
-        static::assertSame(98_000, CommerceFactory::artwork(price: 98_000)->getPrice()->amount);
+        static::assertSame([null, 'Rip Tide'], [
+            CommerceFactory::item(null)->getTitle(),
+            CommerceFactory::item('Rip Tide')->getTitle(),
+        ]);
     }
 
     #[Test]
@@ -53,12 +71,13 @@ final class EntityAccessorsTest extends TestCase
     }
 
     #[Test]
-    public function anOrderItemPriceIsMoney(): void
+    public function anOrderItemPricesItsUnitsAsMoney(): void
     {
-        $line        = new OrderItemEntity();
-        $line->price = 3_500;
+        $line            = new OrderItemEntity();
+        $line->unitPrice = 3_500;
+        $line->quantity  = 3;
 
-        static::assertSame(3_500, $line->getPrice()->amount);
+        static::assertSame([3_500, 10_500], [$line->getUnitPrice()->amount, $line->getTotal()->amount]);
     }
 
     #[Test]
@@ -80,28 +99,62 @@ final class EntityAccessorsTest extends TestCase
     }
 
     #[Test]
+    public function aVariantHasStockForOneUnitByDefault(): void
+    {
+        static::assertSame([true, false], [
+            CommerceFactory::variant(1, stock: 1)->hasStock(),
+            CommerceFactory::variant(1, stock: 0)->hasStock(),
+        ]);
+    }
+
+    #[DataProvider('stockProvider')]
+    #[Test]
+    public function aVariantHasStockWhileEnoughUnitsRemain(?int $stock, int $quantity, bool $hasStock): void
+    {
+        static::assertSame($hasStock, CommerceFactory::variant(1, stock: $stock)->hasStock($quantity));
+    }
+
+    #[Test]
+    public function aVariantPriceIsMoney(): void
+    {
+        static::assertSame(98_000, CommerceFactory::variant(1, price: 98_000)->getPrice()->amount);
+    }
+
+    #[Test]
+    public function aVariantTracksStockOnlyWhenItHasACount(): void
+    {
+        static::assertSame([true, true, false], [
+            CommerceFactory::variant(1, stock: 5)->isStockTracked(),
+            CommerceFactory::variant(1, stock: 0)->isStockTracked(),
+            CommerceFactory::variant(1, stock: null)->isStockTracked(),
+        ]);
+    }
+
+    #[Test]
     public function newEntitiesTakeTheColumnDefaults(): void
     {
         $order   = new OrderEntity();
-        $artwork = new ArtworkEntity();
+        $item    = new ItemEntity();
+        $variant = new ItemVariantEntity();
+        $line    = new OrderItemEntity();
 
         static::assertSame(
-            ['', 'pending', 0, 0, 'artwork', 'available', 0],
+            ['', 'pending', 0, 0, null, 'listed', null, null, 0, null, 0, 0, 1],
             [
                 $order->orderRef,
                 $order->status->value,
                 $order->total,
                 $order->gstAmount,
-                $artwork->itemType->value,
-                $artwork->status->value,
-                $artwork->price,
+                $item->title,
+                $item->status->value,
+                $variant->label,
+                $variant->sku,
+                $variant->price,
+                $variant->stock,
+                $variant->sequence,
+                $line->unitPrice,
+                $line->quantity,
             ],
         );
-    }
-
-    #[Test]
-    public function theDefaultArtworkHasNoTitleOfItsOwn(): void
-    {
-        static::assertNull(CommerceFactory::artwork()->getTitle());
     }
 }

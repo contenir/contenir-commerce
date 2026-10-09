@@ -29,7 +29,8 @@ caller reads its status: `isComplete()`, `isPaid()`, `isOpen()`. Any other failu
 default), with stripe-php 22 (API version `2026-09-30.endive`).
 
 - Each `CheckoutLineItem` becomes a `price_data` line: `currency` (the ISO code in lower case, `aud` by default),
-  `unit_amount` in cents, the name, and the description (`CheckoutService` passes the artist's name).
+  `unit_amount` in cents, the quantity, the name, and the description. `CheckoutService` names a labelled variant
+  "Title — Label" and passes the purchase item's description.
 - The session expires `expiresAfterMinutes` after the injected clock's now. `CheckoutRequest` accepts 30 to 1,440
   minutes, Stripe's range; the default is 30.
 - `customer_email` and `metadata` are sent when given. `CheckoutService` sends `order_ref` and `order_id`.

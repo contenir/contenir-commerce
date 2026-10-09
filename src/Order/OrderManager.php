@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Contenir\Commerce\Order;
 
-use Contenir\Commerce\Exception\ArtworkUnavailableException;
 use Contenir\Commerce\Exception\InvalidArgumentException;
 use Contenir\Commerce\Exception\InvalidTransitionException;
+use Contenir\Commerce\Exception\ItemUnavailableException;
 use Contenir\Commerce\Exception\OrderNotFoundException;
 use Contenir\Commerce\Exception\OverflowException;
 use Contenir\Commerce\Exception\PaymentFailedException;
@@ -40,7 +40,7 @@ final readonly class OrderManager
     /**
      * @see CheckoutService::beginCheckout()
      *
-     * @throws ArtworkUnavailableException When a work has been sold since the order was created.
+     * @throws ItemUnavailableException When an item has sold out or been unlisted since the order was created.
      * @throws InvalidTransitionException When the order is not pending or checkout has already begun.
      * @throws OrderNotFoundException When the order has not been saved.
      * @throws PaymentFailedException
@@ -82,9 +82,9 @@ final readonly class OrderManager
      *
      * @param list<PurchaseItem> $items
      *
-     * @throws ArtworkUnavailableException When a work has been sold since it was carted.
-     * @throws PurchaseItemMismatchException When an item's price or title differs from its artwork's.
-     * @throws InvalidArgumentException When there are no items or a work appears twice.
+     * @throws ItemUnavailableException When an item has sold out or been unlisted since it was carted.
+     * @throws PurchaseItemMismatchException When an item's price, title or label differs from the stored one.
+     * @throws InvalidArgumentException When there are no items or a variant appears twice.
      * @throws OverflowException When the total exceeds the integer range of cents.
      * @throws DbModelException
      * @throws Throwable Database errors, after rolling back.

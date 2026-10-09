@@ -64,8 +64,8 @@ final class MoneyTest extends TestCase
             'exact eleventh'                => [11_000, 1_000],
             'remainder 1 on a larger total' => [100, 9],
             'remainder 6 on a larger total' => [17, 2],
-            'a typical artwork'             => [185_000, 16_818],
-            'an order of two works'         => [283_000, 25_727],
+            'a typical item'                => [185_000, 16_818],
+            'an order of two items'         => [283_000, 25_727],
             'the largest amount'            => [PHP_INT_MAX, 838_488_366_986_797_801],
         ];
     }

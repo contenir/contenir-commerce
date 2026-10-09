@@ -14,8 +14,8 @@ use function strtoupper;
 /**
  * The site's commerce settings, from the "contenir_commerce" config key:
  * the order reference prefix, the currency, and the rate and label of the
- * tax included in every price. The defaults are Lon Retreat's, and
- * reproduce RC1 exactly: "LR", AUD, 10% GST.
+ * tax included in every price. The defaults are "ORD", AUD and 10% GST;
+ * a site sets its own prefix.
  *
  * Each value is checked here, whether it comes from config or from code,
  * and an invalid one throws ConfigurationException naming its config key.
@@ -24,7 +24,7 @@ use function strtoupper;
  */
 final readonly class CommerceSettings
 {
-    public const string DEFAULT_ORDER_REFERENCE_PREFIX = 'LR';
+    public const string DEFAULT_ORDER_REFERENCE_PREFIX = 'ORD';
 
     public const string DEFAULT_CURRENCY = 'AUD';
 

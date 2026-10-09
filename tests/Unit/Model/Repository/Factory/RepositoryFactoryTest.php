@@ -5,25 +5,22 @@ declare(strict_types=1);
 namespace Contenir\Commerce\Tests\Unit\Model\Repository\Factory;
 
 use Contenir\Commerce\Exception\ConfigurationException;
-use Contenir\Commerce\Model\Entity\AbstractArtworkEntity;
-use Contenir\Commerce\Model\Entity\ArtistEnquiryEntity;
-use Contenir\Commerce\Model\Entity\ArtistEnquiryFileEntity;
-use Contenir\Commerce\Model\Entity\ArtworkEntity;
+use Contenir\Commerce\Model\Entity\AbstractItemVariantEntity;
 use Contenir\Commerce\Model\Entity\EmailLogEntity;
+use Contenir\Commerce\Model\Entity\ItemEntity;
+use Contenir\Commerce\Model\Entity\ItemVariantEntity;
 use Contenir\Commerce\Model\Entity\OrderEntity;
 use Contenir\Commerce\Model\Entity\OrderItemEntity;
-use Contenir\Commerce\Model\Repository\ArtistEnquiryFileRepository;
-use Contenir\Commerce\Model\Repository\ArtistEnquiryRepository;
-use Contenir\Commerce\Model\Repository\ArtworkRepository;
 use Contenir\Commerce\Model\Repository\EmailLogRepository;
 use Contenir\Commerce\Model\Repository\Factory\RepositoryFactory;
+use Contenir\Commerce\Model\Repository\ItemRepository;
+use Contenir\Commerce\Model\Repository\ItemVariantRepository;
 use Contenir\Commerce\Model\Repository\OrderItemRepository;
 use Contenir\Commerce\Model\Repository\OrderRepository;
 use Contenir\Commerce\Tests\TestAsset\Container\ArrayContainer;
-use Contenir\Commerce\Tests\TestAsset\Entity\SiteArtistEnquiryEntity;
-use Contenir\Commerce\Tests\TestAsset\Entity\SiteArtistEnquiryFileEntity;
-use Contenir\Commerce\Tests\TestAsset\Entity\SiteArtworkEntity;
 use Contenir\Commerce\Tests\TestAsset\Entity\SiteEmailLogEntity;
+use Contenir\Commerce\Tests\TestAsset\Entity\SiteItemEntity;
+use Contenir\Commerce\Tests\TestAsset\Entity\SiteItemVariantEntity;
 use Contenir\Commerce\Tests\TestAsset\Entity\SiteOrderEntity;
 use Contenir\Commerce\Tests\TestAsset\Entity\SiteOrderItemEntity;
 use Contenir\Db\Model\EntityManager;
@@ -47,12 +44,11 @@ final class RepositoryFactoryTest extends TestCase
     public static function defaultEntityProvider(): array
     {
         return [
-            'artworks'             => [ArtworkRepository::class, ArtworkEntity::class],
-            'orders'               => [OrderRepository::class, OrderEntity::class],
-            'order items'          => [OrderItemRepository::class, OrderItemEntity::class],
-            'artist enquiries'     => [ArtistEnquiryRepository::class, ArtistEnquiryEntity::class],
-            'artist enquiry files' => [ArtistEnquiryFileRepository::class, ArtistEnquiryFileEntity::class],
-            'email log'            => [EmailLogRepository::class, EmailLogEntity::class],
+            'items'         => [ItemRepository::class, ItemEntity::class],
+            'item variants' => [ItemVariantRepository::class, ItemVariantEntity::class],
+            'orders'        => [OrderRepository::class, OrderEntity::class],
+            'order items'   => [OrderItemRepository::class, OrderItemEntity::class],
+            'email log'     => [EmailLogRepository::class, EmailLogEntity::class],
         ];
     }
 
@@ -63,30 +59,30 @@ final class RepositoryFactoryTest extends TestCase
     {
         return [
             'a class that does not exist'    => [
-                'MissingArtworkEntity',
-                'Config "contenir_commerce.artwork_entity" must name an existing subclass of '
-                    . AbstractArtworkEntity::class
-                    . ', got "MissingArtworkEntity"',
+                'MissingVariantEntity',
+                'Config "contenir_commerce.item_variant_entity" must name an existing subclass of '
+                    . AbstractItemVariantEntity::class
+                    . ', got "MissingVariantEntity"',
             ],
             'an entity of another table'     => [
                 OrderEntity::class,
-                'Config "contenir_commerce.artwork_entity" must name an existing subclass of '
-                    . AbstractArtworkEntity::class
+                'Config "contenir_commerce.item_variant_entity" must name an existing subclass of '
+                    . AbstractItemVariantEntity::class
                     . ', got "'
                     . OrderEntity::class
                     . '"',
             ],
             'the abstract base itself'       => [
-                AbstractArtworkEntity::class,
-                'Config "contenir_commerce.artwork_entity" must name an existing subclass of '
-                    . AbstractArtworkEntity::class
+                AbstractItemVariantEntity::class,
+                'Config "contenir_commerce.item_variant_entity" must name an existing subclass of '
+                    . AbstractItemVariantEntity::class
                     . ', got "'
-                    . AbstractArtworkEntity::class
+                    . AbstractItemVariantEntity::class
                     . '"',
             ],
             'a class name that is no string' => [
                 42,
-                'Config "contenir_commerce.artwork_entity" must be a string, got int',
+                'Config "contenir_commerce.item_variant_entity" must be a string, got int',
             ],
         ];
     }
@@ -97,20 +93,11 @@ final class RepositoryFactoryTest extends TestCase
     public static function siteEntityProvider(): array
     {
         return [
-            'artworks'             => [ArtworkRepository::class, 'artwork_entity', SiteArtworkEntity::class],
-            'orders'               => [OrderRepository::class, 'order_entity', SiteOrderEntity::class],
-            'order items'          => [OrderItemRepository::class, 'order_item_entity', SiteOrderItemEntity::class],
-            'artist enquiries'     => [
-                ArtistEnquiryRepository::class,
-                'artist_enquiry_entity',
-                SiteArtistEnquiryEntity::class,
-            ],
-            'artist enquiry files' => [
-                ArtistEnquiryFileRepository::class,
-                'artist_enquiry_file_entity',
-                SiteArtistEnquiryFileEntity::class,
-            ],
-            'email log'            => [EmailLogRepository::class, 'email_log_entity', SiteEmailLogEntity::class],
+            'items'         => [ItemRepository::class, 'item_entity', SiteItemEntity::class],
+            'item variants' => [ItemVariantRepository::class, 'item_variant_entity', SiteItemVariantEntity::class],
+            'orders'        => [OrderRepository::class, 'order_entity', SiteOrderEntity::class],
+            'order items'   => [OrderItemRepository::class, 'order_item_entity', SiteOrderItemEntity::class],
+            'email log'     => [EmailLogRepository::class, 'email_log_entity', SiteEmailLogEntity::class],
         ];
     }
 
@@ -131,7 +118,7 @@ final class RepositoryFactoryTest extends TestCase
         $this->expectException(ConfigurationException::class);
         $this->expectExceptionMessage('Config "contenir_commerce" must be an array, got string');
 
-        (new RepositoryFactory())($this->container('artwork'), ArtworkRepository::class);
+        (new RepositoryFactory())($this->container('item'), ItemVariantRepository::class);
     }
 
     #[Test]
@@ -146,7 +133,7 @@ final class RepositoryFactoryTest extends TestCase
         $this->expectException(ConfigurationException::class);
         $this->expectExceptionMessage('Service "db.gallery" must be a PhpDb\Adapter\AdapterInterface, got string');
 
-        (new RepositoryFactory())($container, ArtworkRepository::class);
+        (new RepositoryFactory())($container, ItemVariantRepository::class);
     }
 
     #[DataProvider('invalidEntityClassProvider')]
@@ -156,7 +143,9 @@ final class RepositoryFactoryTest extends TestCase
         $this->expectException(ConfigurationException::class);
         $this->expectExceptionMessage($message);
 
-        (new RepositoryFactory())($this->container(['artwork_entity' => $entityClass]), ArtworkRepository::class);
+        (new RepositoryFactory())($this->container([
+            'item_variant_entity' => $entityClass,
+        ]), ItemVariantRepository::class);
     }
 
     #[Test]
@@ -195,7 +184,7 @@ final class RepositoryFactoryTest extends TestCase
     }
 
     #[Test]
-    public function theArtworkRepositoryUsesTheAdapterServiceContenirDbModelNames(): void
+    public function theVariantRepositoryUsesTheAdapterServiceContenirDbModelNames(): void
     {
         $services = $this->services();
         unset($services[AdapterInterface::class]);
@@ -206,8 +195,8 @@ final class RepositoryFactoryTest extends TestCase
         ]);
 
         static::assertInstanceOf(
-            ArtworkRepository::class,
-            (new RepositoryFactory())($container, ArtworkRepository::class),
+            ItemVariantRepository::class,
+            (new RepositoryFactory())($container, ItemVariantRepository::class),
         );
     }
 
@@ -221,8 +210,8 @@ final class RepositoryFactoryTest extends TestCase
         $container = new ArrayContainer([...$this->services(), ...$services]);
 
         static::assertSame(
-            ArtworkEntity::class,
-            (new RepositoryFactory())($container, ArtworkRepository::class)->newEntity()::class,
+            ItemVariantEntity::class,
+            (new RepositoryFactory())($container, ItemVariantRepository::class)->newEntity()::class,
         );
     }
 

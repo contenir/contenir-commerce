@@ -5,18 +5,16 @@ declare(strict_types=1);
 namespace Contenir\Commerce\Tests\Integration\Order;
 
 use Contenir\Commerce\Config\CommerceSettings;
-use Contenir\Commerce\Exception\ArtworkUnavailableException;
 use Contenir\Commerce\Exception\InvalidArgumentException;
 use Contenir\Commerce\Exception\InvalidTransitionException;
+use Contenir\Commerce\Exception\ItemUnavailableException;
 use Contenir\Commerce\Exception\PurchaseItemMismatchException;
-use Contenir\Commerce\Model\Repository\ArtworkRepository;
+use Contenir\Commerce\Model\Repository\ItemRepository;
 use Contenir\Commerce\Money\Money;
-use Contenir\Commerce\Order\CheckoutService;
 use Contenir\Commerce\Order\PurchaseItem;
-use Contenir\Commerce\Tests\TestAsset\Entity\SiteArtworkEntity;
+use Contenir\Commerce\Tests\TestAsset\Entity\SiteItemEntity;
 use Contenir\Commerce\Tests\TestAsset\Factory\CommerceFactory;
 use Contenir\Commerce\Tests\Trait\OrderServicesTrait;
-use Contenir\Db\Model\Type\TypeRegistry;
 use Override;
 use PDOException;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -36,21 +34,32 @@ final class CheckoutServiceTest extends TestCase
     use OrderServicesTrait;
 
     /**
+     * @return array<string, array{?string, string}>
+     */
+    public static function mislabelledProvider(): array
+    {
+        return [
+            'another label' => ['A2', 'Variant 3 of "Headland, Dawn" is labelled "A3", not "A2"'],
+            'no label'      => [null, 'Variant 3 of "Headland, Dawn" is labelled "A3", not ""'],
+        ];
+    }
+
+    /**
      * @return array<string, array{int, string}>
      */
     public static function mispricedProvider(): array
     {
         return [
-            'a cent cheaper' => [184_999, '"Headland, Dawn" (artwork 1) is priced $1,850.00, not $1,849.99'],
-            'dearer'         => [200_000, '"Headland, Dawn" (artwork 1) is priced $1,850.00, not $2,000.00'],
-            'free'           => [0, '"Headland, Dawn" (artwork 1) is priced $1,850.00, not $0.00'],
+            'a cent cheaper' => [184_999, '"Headland, Dawn" (variant 1) is priced $1,850.00, not $1,849.99'],
+            'dearer'         => [200_000, '"Headland, Dawn" (variant 1) is priced $1,850.00, not $2,000.00'],
+            'free'           => [0, '"Headland, Dawn" (variant 1) is priced $1,850.00, not $0.00'],
         ];
     }
 
     #[Test]
     public function aConfiguredPrefixAndTaxRateShapeTheOrder(): void
     {
-        $checkout = $this->checkoutWith($this->artworks, new CommerceSettings('GG', 'NZD', 15, 'GST'));
+        $checkout = $this->checkoutWith(new ItemRepository($this->em), new CommerceSettings('GG', 'NZD', 15, 'GST'));
 
         $order = $checkout->createPendingOrder($this->items(), CommerceFactory::customer());
 
@@ -60,25 +69,27 @@ final class CheckoutServiceTest extends TestCase
         );
     }
 
+    #[DataProvider('mislabelledProvider')]
     #[Test]
-    public function aMatchingTitleAndPriceAreAccepted(): void
+    public function aLabelThatDiffersFromTheVariantsIsRefused(?string $label, string $message): void
     {
-        $this->updateBehindTheManager("UPDATE artwork SET title = 'Headland, Dawn' WHERE artwork_id = 1");
+        $this->addPrintEdition();
 
-        $order = $this->titledCheckout()->createPendingOrder([CommerceFactory::item(1)], CommerceFactory::customer());
+        $this->expectException(PurchaseItemMismatchException::class);
+        $this->expectExceptionMessage($message);
 
-        static::assertSame(185_000, $order->total);
+        $this->checkout->createPendingOrder(
+            [CommerceFactory::purchaseItem(3, price: 12_000, variantLabel: $label)],
+            CommerceFactory::customer(),
+        );
     }
 
     #[Test]
-    public function anArtworkWithoutATitleOfItsOwnAcceptsTheCartTitle(): void
+    public function aMatchingTitleAndPriceAreAccepted(): void
     {
-        $order = $this->titledCheckout()->createPendingOrder(
-            [CommerceFactory::item(1, 'Headland at Dawn')],
-            CommerceFactory::customer(),
-        );
+        $order = $this->checkout->createPendingOrder([CommerceFactory::purchaseItem(1)], CommerceFactory::customer());
 
-        static::assertSame('LR-2026-0001', $order->orderRef);
+        static::assertSame(185_000, $order->total);
     }
 
     #[Test]
@@ -91,84 +102,151 @@ final class CheckoutServiceTest extends TestCase
     }
 
     #[Test]
-    public function anUnavailableWorkIsReportedBeforeAMispricedOne(): void
+    public function anItemWithoutATitleAcceptsTheCartTitle(): void
     {
-        $this->updateBehindTheManager("UPDATE artwork SET status = 'sold' WHERE artwork_id = 2");
+        $this->updateBehindTheManager('UPDATE item SET title = NULL WHERE item_id = 1');
 
-        $this->expectException(ArtworkUnavailableException::class);
+        $order = $this->checkout->createPendingOrder(
+            [CommerceFactory::purchaseItem(1, 'Headland at Dawn')],
+            CommerceFactory::customer(),
+        );
+
+        static::assertSame('ORD-2026-0001', $order->orderRef);
+    }
+
+    #[Test]
+    public function anUnavailableItemIsReportedBeforeAMispricedOne(): void
+    {
+        $this->updateBehindTheManager('UPDATE item_variant SET stock = 0 WHERE item_variant_id = 2');
+
+        $this->expectException(ItemUnavailableException::class);
         $this->expectExceptionMessage('No longer available: Swan Bay Nocturne');
 
         $this->checkout->createPendingOrder(
-            [CommerceFactory::item(1, price: 1), CommerceFactory::item(2, 'Swan Bay Nocturne', 98_000)],
+            [CommerceFactory::purchaseItem(1, price: 1), CommerceFactory::purchaseItem(2, 'Swan Bay Nocturne', 98_000)],
             CommerceFactory::customer(),
         );
     }
 
+    #[Test]
+    public function anUnlistedItemCannotBeOrdered(): void
+    {
+        $this->updateBehindTheManager("UPDATE item SET status = 'unlisted' WHERE item_id = 1");
+
+        $this->expectException(ItemUnavailableException::class);
+        $this->expectExceptionMessage('No longer available: Headland, Dawn');
+
+        $this->checkout->createPendingOrder([CommerceFactory::purchaseItem(1)], CommerceFactory::customer());
+    }
+
     #[DataProvider('mispricedProvider')]
     #[Test]
-    public function aPriceThatDiffersFromTheArtworksIsRefused(int $price, string $message): void
+    public function aPriceThatDiffersFromTheVariantsIsRefused(int $price, string $message): void
     {
         try {
             $this->checkout->createPendingOrder(
-                [CommerceFactory::item(2, 'Swan Bay Nocturne', 98_000), CommerceFactory::item(1, price: $price)],
+                [
+                    CommerceFactory::purchaseItem(2, 'Swan Bay Nocturne', 98_000),
+                    CommerceFactory::purchaseItem(1, price: $price),
+                ],
                 CommerceFactory::customer(),
             );
             static::fail('Expected PurchaseItemMismatchException');
         } catch (PurchaseItemMismatchException $e) {
             static::assertSame([$message, 1, 0], [
                 $e->getMessage(),
-                $e->getArtworkId(),
-                $this->rowCount('gallery_order'),
+                $e->getItemVariantId(),
+                $this->rowCount('commerce_order'),
             ]);
         }
     }
 
     #[Test]
-    public function aTitleIsCheckedWhenTheArtworkMapsOne(): void
+    public function aSiteItemsOwnTitleIsWhatTheCartTitleIsCheckedAgainst(): void
     {
-        $this->updateBehindTheManager("UPDATE artwork SET title = 'Headland, Dawn' WHERE artwork_id = 1");
+        $this->updateBehindTheManager("UPDATE item SET title = NULL, medium = 'Oil on linen' WHERE item_id = 1");
 
+        $this->expectException(PurchaseItemMismatchException::class);
+        $this->expectExceptionMessage('The item of variant 1 is titled "Oil on linen", not "Headland, Dawn"');
+
+        $this->checkoutWith(new ItemRepository($this->em, SiteItemEntity::class))->createPendingOrder(
+            [CommerceFactory::purchaseItem(1)],
+            CommerceFactory::customer(),
+        );
+    }
+
+    #[Test]
+    public function aTitleThatDiffersFromTheItemsIsRefused(): void
+    {
         try {
-            $this->titledCheckout()->createPendingOrder(
-                [CommerceFactory::item(1, 'Headland at Dawn')],
+            $this->checkout->createPendingOrder(
+                [CommerceFactory::purchaseItem(1, 'Headland at Dawn')],
                 CommerceFactory::customer(),
             );
             static::fail('Expected PurchaseItemMismatchException');
         } catch (PurchaseItemMismatchException $e) {
             static::assertSame(
-                ['Artwork 1 is titled "Headland, Dawn", not "Headland at Dawn"', 1, 0],
-                [$e->getMessage(), $e->getArtworkId(), $this->rowCount('gallery_order')],
+                ['The item of variant 1 is titled "Headland, Dawn", not "Headland at Dawn"', 1, 0],
+                [$e->getMessage(), $e->getItemVariantId(), $this->rowCount('commerce_order')],
             );
         }
     }
 
     #[Test]
-    public function aWorkCannotAppearTwiceInOneOrder(): void
+    public function aVariantCannotAppearTwiceInOneOrder(): void
     {
         try {
             $this->checkout->createPendingOrder(
-                [CommerceFactory::item(1), CommerceFactory::item(2, 'Swan Bay'), CommerceFactory::item(1)],
+                [
+                    CommerceFactory::purchaseItem(1),
+                    CommerceFactory::purchaseItem(2, 'Swan Bay'),
+                    CommerceFactory::purchaseItem(1),
+                ],
                 CommerceFactory::customer(),
             );
             static::fail('Expected InvalidArgumentException');
         } catch (InvalidArgumentException $e) {
             static::assertSame(
                 ['"Headland, Dawn" appears in the order more than once', 0],
-                [$e->getMessage(), $this->rowCount('gallery_order')],
+                [$e->getMessage(), $this->rowCount('commerce_order')],
             );
         }
     }
 
     #[Test]
-    public function aWorkDeletedAfterCartingIsReportedUnavailable(): void
+    public function aVariantDeletedAfterCartingIsReportedUnavailable(): void
     {
-        $this->expectException(ArtworkUnavailableException::class);
+        $this->expectException(ItemUnavailableException::class);
         $this->expectExceptionMessage('No longer available: Lost Work');
 
         $this->checkout->createPendingOrder(
-            [CommerceFactory::item(1), CommerceFactory::item(99, 'Lost Work')],
+            [CommerceFactory::purchaseItem(1), CommerceFactory::purchaseItem(99, 'Lost Work')],
             CommerceFactory::customer(),
         );
+    }
+
+    #[Test]
+    public function aVariantWhoseItemIsDeletedCannotBeOrdered(): void
+    {
+        $this->updateBehindTheManager('DELETE FROM item WHERE item_id = 1');
+
+        $this->expectException(ItemUnavailableException::class);
+        $this->expectExceptionMessage('No longer available: Headland, Dawn');
+
+        $this->checkout->createPendingOrder([CommerceFactory::purchaseItem(1)], CommerceFactory::customer());
+    }
+
+    #[Test]
+    public function aVariantWhoseStockIsNotTrackedCanBeOrderedInAnyQuantity(): void
+    {
+        $this->updateBehindTheManager('UPDATE item_variant SET stock = NULL WHERE item_variant_id = 2');
+
+        $order = $this->checkout->createPendingOrder(
+            [CommerceFactory::purchaseItem(2, 'Swan Bay Nocturne', 98_000, 40)],
+            CommerceFactory::customer(),
+        );
+
+        static::assertSame(3_920_000, $order->total);
     }
 
     #[Test]
@@ -177,7 +255,7 @@ final class CheckoutServiceTest extends TestCase
         $order = $this->checkedOutOrder();
 
         $this->expectException(InvalidTransitionException::class);
-        $this->expectExceptionMessage('Checkout has already begun for order "LR-2026-0001"');
+        $this->expectExceptionMessage('Checkout has already begun for order "ORD-2026-0001"');
 
         $this->checkout->beginCheckout($order, 'https://example.test/thanks', 'https://example.test/cart');
     }
@@ -197,12 +275,12 @@ final class CheckoutServiceTest extends TestCase
     public function beginningCheckoutRechecksAvailability(): void
     {
         $order = $this->checkout->createPendingOrder($this->items(), CommerceFactory::customer());
-        $this->updateBehindTheManager("UPDATE artwork SET status = 'sold' WHERE artwork_id = 1");
+        $this->updateBehindTheManager('UPDATE item_variant SET stock = 0 WHERE item_variant_id = 1');
 
         try {
             $this->checkout->beginCheckout($order, 'https://example.test/thanks', 'https://example.test/cart');
-            static::fail('Expected ArtworkUnavailableException');
-        } catch (ArtworkUnavailableException $e) {
+            static::fail('Expected ItemUnavailableException');
+        } catch (ItemUnavailableException $e) {
             static::assertSame(
                 [['Headland, Dawn'], [], null],
                 [$e->getTitles(), $this->gateway->checkoutRequests, $order->stripeCheckoutSessionId],
@@ -226,7 +304,7 @@ final class CheckoutServiceTest extends TestCase
                 'https://example.test/thanks',
                 'https://example.test/cart',
                 'avery@example.test',
-                ['order_ref' => 'LR-2026-0001', 'order_id' => '1'],
+                ['order_ref' => 'ORD-2026-0001', 'order_id' => '1'],
                 [
                     ['Headland, Dawn',    185_000, 1, 'June Hollis'],
                     ['Swan Bay Nocturne', 98_000,  1, 'Marcus Tran'],
@@ -248,6 +326,24 @@ final class CheckoutServiceTest extends TestCase
     }
 
     #[Test]
+    public function checkoutNamesALabelledVariantAndSendsItsQuantity(): void
+    {
+        $this->addPrintEdition();
+        $order = $this->checkout->createPendingOrder(
+            [CommerceFactory::purchaseItem(3, price: 12_000, quantity: 2, variantLabel: 'A3')],
+            CommerceFactory::customer(),
+        );
+
+        $this->checkout->beginCheckout($order, 'https://example.test/thanks', 'https://example.test/cart');
+        $line = $this->gateway->checkoutRequests[0]->lineItems[0];
+
+        static::assertSame(
+            ['Headland, Dawn — A3', 12_000, 2],
+            [$line->name, $line->price->amount, $line->quantity],
+        );
+    }
+
+    #[Test]
     public function creatingAnOrderRecordsTheCustomerTotalsAndSnapshots(): void
     {
         $order = $this->checkout->createPendingOrder($this->items(), CommerceFactory::customer());
@@ -256,7 +352,7 @@ final class CheckoutServiceTest extends TestCase
             [
                 [
                     'order_id'       => 1,
-                    'order_ref'      => 'LR-2026-0001',
+                    'order_ref'      => 'ORD-2026-0001',
                     'customer_name'  => 'Avery Buyer',
                     'customer_email' => 'avery@example.test',
                     'customer_phone' => '0400 000 000',
@@ -268,10 +364,10 @@ final class CheckoutServiceTest extends TestCase
                     'updated'        => '2026-08-20 10:00:00',
                 ],
                 [
-                    [1, 1, 'Headland, Dawn',    'June Hollis', 185_000, '2026-08-20 10:00:00'],
-                    [1, 2, 'Swan Bay Nocturne', 'Marcus Tran', 98_000,  '2026-08-20 10:00:00'],
+                    [1, 1, 1, 'Headland, Dawn',    null, 'June Hollis', 185_000, 1, '2026-08-20 10:00:00'],
+                    [1, 2, 2, 'Swan Bay Nocturne', null, 'Marcus Tran', 98_000,  1, '2026-08-20 10:00:00'],
                 ],
-                'LR-2026-0001',
+                'ORD-2026-0001',
             ],
             [
                 $this->orderRow([
@@ -294,74 +390,111 @@ final class CheckoutServiceTest extends TestCase
     }
 
     #[Test]
-    public function everyUnavailableWorkIsReportedTogether(): void
+    public function everyUnavailableItemIsReportedTogether(): void
     {
-        $this->updateBehindTheManager("UPDATE artwork SET status = 'sold' WHERE artwork_id = 2");
+        $this->updateBehindTheManager('UPDATE item_variant SET stock = 0 WHERE item_variant_id = 2');
 
         try {
             $this->checkout->createPendingOrder(
-                [CommerceFactory::item(99, 'Lost Work'), CommerceFactory::item(2, 'Swan Bay Nocturne', 98_000)],
+                [
+                    CommerceFactory::purchaseItem(99, 'Lost Work'),
+                    CommerceFactory::purchaseItem(2, 'Swan Bay Nocturne', 98_000),
+                ],
                 CommerceFactory::customer(),
             );
-            static::fail('Expected ArtworkUnavailableException');
-        } catch (ArtworkUnavailableException $e) {
+            static::fail('Expected ItemUnavailableException');
+        } catch (ItemUnavailableException $e) {
             static::assertSame(['Lost Work', 'Swan Bay Nocturne'], $e->getTitles());
         }
     }
 
     #[Test]
-    public function ordersAreNumberedPerYearFromTheirId(): void
+    public function moreUnitsThanRemainCannotBeOrdered(): void
     {
-        $this->checkout->createPendingOrder([CommerceFactory::item(1)], CommerceFactory::customer());
-        $this->clock->moveTo('2027-01-02 08:00:00');
+        $this->addPrintEdition();
 
-        $second = $this->checkout->createPendingOrder(
-            [CommerceFactory::item(2, 'Swan Bay', 98_000)],
+        $this->expectException(ItemUnavailableException::class);
+        $this->expectExceptionMessage('No longer available: Headland, Dawn');
+
+        $this->checkout->createPendingOrder(
+            [CommerceFactory::purchaseItem(3, price: 12_000, quantity: 6, variantLabel: 'A3')],
             CommerceFactory::customer(),
         );
-
-        static::assertSame('LR-2027-0002', $second->orderRef);
     }
 
     #[Test]
-    public function purchaseItemsKeepTheirSnapshotsAfterTheArtworkIsDeleted(): void
+    public function ordersAreNumberedPerYearFromTheirId(): void
     {
-        $order = $this->checkout->createPendingOrder(
-            [new PurchaseItem(1, 'Tote bag', Money::fromCents(185_000))],
+        $this->checkout->createPendingOrder([CommerceFactory::purchaseItem(1)], CommerceFactory::customer());
+        $this->clock->moveTo('2027-01-02 08:00:00');
+
+        $second = $this->checkout->createPendingOrder(
+            [CommerceFactory::purchaseItem(2, 'Swan Bay Nocturne', 98_000)],
             CommerceFactory::customer(),
         );
-        $this->updateBehindTheManager('UPDATE gallery_order_item SET artwork_id = NULL');
+
+        static::assertSame('ORD-2027-0002', $second->orderRef);
+    }
+
+    #[Test]
+    public function purchaseItemsKeepTheirSnapshotsAfterTheVariantIsDeleted(): void
+    {
+        $this->addPrintEdition();
+        $order = $this->checkout->createPendingOrder(
+            [CommerceFactory::purchaseItem(3, price: 12_000, quantity: 2, variantLabel: 'A3')],
+            CommerceFactory::customer(),
+        );
+        $this->updateBehindTheManager('UPDATE commerce_order_item SET item_id = NULL, item_variant_id = NULL');
 
         $this->em->clear();
 
         $items = $this->checkout->purchaseItemsFor($order);
 
-        static::assertEquals([new PurchaseItem(0, 'Tote bag', Money::fromCents(185_000))], $items);
+        static::assertEquals(
+            [new PurchaseItem(0, 'Headland, Dawn', Money::fromCents(12_000), 2, 'A3', 'June Hollis')],
+            $items,
+        );
     }
 
     #[Test]
-    public function soldWorksCannotBeOrdered(): void
+    public function severalUnitsOfOneVariantAreOneLine(): void
     {
-        $this->updateBehindTheManager("UPDATE artwork SET status = 'sold' WHERE artwork_id = 2");
+        $this->addPrintEdition();
+
+        $order = $this->checkout->createPendingOrder(
+            [CommerceFactory::purchaseItem(3, price: 12_000, quantity: 3, variantLabel: 'A3')],
+            CommerceFactory::customer(),
+        );
+
+        static::assertSame(
+            [36_000, [[1, 1, 3, 'Headland, Dawn', 'A3', 'June Hollis', 12_000, 3, '2026-08-20 10:00:00']]],
+            [$order->total, [$this->lineRow(1)]],
+        );
+    }
+
+    #[Test]
+    public function soldOutItemsCannotBeOrdered(): void
+    {
+        $this->updateBehindTheManager('UPDATE item_variant SET stock = 0 WHERE item_variant_id = 2');
 
         try {
             $this->checkout->createPendingOrder($this->items(), CommerceFactory::customer());
-            static::fail('Expected ArtworkUnavailableException');
-        } catch (ArtworkUnavailableException $e) {
-            static::assertSame([['Swan Bay Nocturne'], 0], [$e->getTitles(), $this->rowCount('gallery_order')]);
+            static::fail('Expected ItemUnavailableException');
+        } catch (ItemUnavailableException $e) {
+            static::assertSame([['Swan Bay Nocturne'], 0], [$e->getTitles(), $this->rowCount('commerce_order')]);
         }
     }
 
     #[Test]
     public function theOrderAndItsLinesAreWrittenTogetherOrNotAtAll(): void
     {
-        $this->updateBehindTheManager('DROP TABLE gallery_order_item');
+        $this->updateBehindTheManager('DROP TABLE commerce_order_item');
 
         try {
             $this->checkout->createPendingOrder($this->items(), CommerceFactory::customer());
             static::fail('Expected PDOException');
         } catch (PDOException) {
-            static::assertSame(0, $this->rowCount('gallery_order'));
+            static::assertSame(0, $this->rowCount('commerce_order'));
         }
     }
 
@@ -372,15 +505,10 @@ final class CheckoutServiceTest extends TestCase
     }
 
     /**
-     * Checkout over a site artwork entity that maps the "title" column.
+     * Variant 3 of item 1: an A3 print edition of five at 120.00.
      */
-    private function titledCheckout(): CheckoutService
+    private function addPrintEdition(): void
     {
-        return $this->checkoutWith(new ArtworkRepository(
-            $this->em,
-            $this->adapter,
-            TypeRegistry::withDefaults(),
-            SiteArtworkEntity::class,
-        ));
+        $this->em->save(CommerceFactory::variant(1, 12_000, 5, 'A3'));
     }
 }

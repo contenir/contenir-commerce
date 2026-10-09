@@ -12,7 +12,7 @@ namespace Contenir\Commerce\Order;
 enum CompletionOutcome: string
 {
     /**
-     * The payment was confirmed: the order is paid and its works are sold.
+     * The payment was confirmed: the order is paid and its items are claimed.
      */
     case Completed = 'completed';
 
@@ -29,7 +29,7 @@ enum CompletionOutcome: string
     case NotPaid = 'not_paid';
 
     /**
-     * Another buyer completed payment for one of the works first; this
+     * Another buyer completed payment for the last of one of the items first; this
      * payment was refunded in full and the order closed (no holds policy:
      * first completed payment wins).
      */

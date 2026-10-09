@@ -15,10 +15,10 @@ use Contenir\Db\Model\Mapping\Id;
 use DateTimeImmutable;
 
 /**
- * A gallery order. Change its status through the order services, which enforce
+ * An order. Change its status through the order services, which enforce
  * the OrderStatus lifecycle; the timestamps record when each step happened.
  *
- * Extend it with a final class carrying #[Table('gallery_order')] (or use
+ * Extend it with a final class carrying #[Table('commerce_order')] (or use
  * OrderEntity) and add the site's own columns there; point the
  * "contenir_commerce.order_entity" config key at that class.
  *
@@ -26,7 +26,7 @@ use DateTimeImmutable;
  *
  * @consistent-constructor Entities are created with no constructor arguments.
  *
- * @mago-expect lint:too-many-properties One property per column of the gallery_order table.
+ * @mago-expect lint:too-many-properties One property per column of the commerce_order table.
  */
 abstract class AbstractOrderEntity
 {

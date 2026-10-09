@@ -64,9 +64,9 @@ final class OrderRepositoryTest extends TestCase
     #[Test]
     public function itsItemsLoadInTheOrderTheyWereAdded(): void
     {
-        $this->insert('gallery_order_item', ['order_id' => 1, 'title' => 'Zebra Finch', 'price' => 100]);
-        $this->insert('gallery_order_item', ['order_id' => 2, 'title' => 'Elsewhere', 'price' => 100]);
-        $this->insert('gallery_order_item', ['order_id' => 1, 'title' => 'Apple Gum', 'price' => 200]);
+        $this->insert('commerce_order_item', ['order_id' => 1, 'title' => 'Zebra Finch', 'unit_price' => 100]);
+        $this->insert('commerce_order_item', ['order_id' => 2, 'title' => 'Elsewhere', 'unit_price' => 100]);
+        $this->insert('commerce_order_item', ['order_id' => 1, 'title' => 'Apple Gum', 'unit_price' => 200]);
 
         static::assertSame(
             ['Zebra Finch', 'Apple Gum'],
@@ -80,7 +80,7 @@ final class OrderRepositoryTest extends TestCase
     #[Test]
     public function mapsEveryColumn(): void
     {
-        $this->insert('gallery_order', [
+        $this->insert('commerce_order', [
             'order_id'                   => 9,
             'order_ref'                  => 'LR-2026-0009',
             'customer_name'              => 'Avery Buyer',
@@ -153,17 +153,17 @@ final class OrderRepositoryTest extends TestCase
         $this->setUpDatabase();
         $this->repository = new OrderRepository($this->em);
 
-        $this->insert('gallery_order', [
+        $this->insert('commerce_order', [
             'order_ref'                  => 'LR-2026-0001',
             'status'                     => 'paid',
             'stripe_checkout_session_id' => 'cs_1',
         ]);
-        $this->insert('gallery_order', [
+        $this->insert('commerce_order', [
             'order_ref'                  => 'LR-2026-0002',
             'status'                     => 'pending',
             'stripe_checkout_session_id' => 'cs_2',
         ]);
-        $this->insert('gallery_order', [
+        $this->insert('commerce_order', [
             'order_ref'                  => 'LR-2026-0003',
             'status'                     => 'paid',
             'stripe_checkout_session_id' => 'cs_3',

@@ -5,17 +5,18 @@
 
 Formerly `contenir/commerce`; the old package is abandoned in favour of this one.
 
-The commerce domain for [Contenir](https://github.com/contenir) gallery sites, built on
+The commerce domain for [Contenir](https://github.com/contenir) sites, built on
 [contenir-db-model 2](https://github.com/contenir/contenir-db-model):
 
 - **orders** and their lifecycle (`CheckoutService`, `CompletionService`, `FulfilmentService`, and the `OrderManager`
   façade over them; `OrderStatus`): pending, paid, awaiting pickup, collected, refunded, cancelled, with every
   transition enforced;
-- **artworks** and retail products, with availability checked when an order is created and when checkout begins,
-  prices checked against the stored artwork, and each work claimed atomically when payment completes, so it sells
+- **items** and their **variants**: anything a site sells (an artwork, a print size, a treatment), each variant with
+  its own price and stock. Availability is checked when an order is created and when checkout begins, prices are
+  checked against the stored variant, and stock is claimed atomically when payment completes, so the last unit sells
   once;
 - tax-inclusive **money** in integer cents (`Money`, `TaxRate`), with exact rounding at any rate;
-- **artist enquiries** and their uploaded files, and the transactional **email log**;
+- the transactional **email log**;
 - **Stripe** hosted Checkout, session expiry and refunds behind `PaymentGatewayInterface`, with every Stripe error
   surfaced as `PaymentFailedException`;
 - extensible **entities**: abstract bases a site extends with columns of its own, selected by configuration.
@@ -32,7 +33,7 @@ Mezzio plumbing of its own. Version 2.0 is not compatible with 0.2; see [UPGRADE
 
 ## Install
 
-2.0 is a release candidate (`2.0.0-RC2`): contenir-db-model 2 is itself at RC and builds on php-db/phpdb 0.6, which
+2.0 is a release candidate (`2.0.0-RC3`): contenir-db-model 2 is itself at RC and builds on php-db/phpdb 0.6, which
 has no stable release yet. Composer only honours stability flags in the root package, so a site needs these in its
 own `composer.json`:
 
@@ -63,10 +64,10 @@ use Contenir\Commerce\Order\PurchaseItem;
 
 $orders = $container->get(OrderManager::class);
 
-// Build each item from the artwork row on the server. A price that differs from the stored artwork's is refused
-// with PurchaseItemMismatchException.
+// Build each item from the variant and item rows on the server. A price that differs from the stored variant's is
+// refused with PurchaseItemMismatchException.
 $order = $orders->createPendingOrder(
-    [new PurchaseItem($artwork->artworkId, 'Headland, Dawn', $artwork->getPrice(), 'June Hollis')],
+    [new PurchaseItem($variant->itemVariantId, $item->title, $variant->getPrice(), quantity: 2, variantLabel: 'A3')],
     new CustomerDetails('Avery Buyer', 'avery@example.test'),
 );
 
@@ -104,16 +105,16 @@ return [
         'secret_key' => 'sk_live_...',
     ],
     'contenir_commerce' => [
-        'order_reference_prefix' => 'LR',   // LR-2026-0001
+        'order_reference_prefix' => 'ORD',  // ORD-2026-0001
         'currency'               => 'AUD',
         'tax_rate'               => 10,     // percent, included in prices
         'tax_label'              => 'GST',
-        'artwork_entity'         => App\Entity\Artwork::class, // and the other *_entity keys
+        'item_entity'            => App\Entity\Artwork::class, // and the other *_entity keys
     ],
 ];
 ```
 
-The values shown are the defaults (apart from `artwork_entity`); invalid ones throw `ConfigurationException`.
+The values shown are the defaults (apart from `item_entity`); invalid ones throw `ConfigurationException`.
 Without a Stripe key the container still builds: `PaymentGatewayInterface` resolves to `UnconfiguredGateway`, which
 throws `PaymentFailedException` as soon as money would move. See [docs/configuration.md](docs/configuration.md) and,
 for columns of your own, [docs/entities.md](docs/entities.md).
@@ -129,9 +130,9 @@ for columns of your own, [docs/entities.md](docs/entities.md).
 | `Order\PurchaseItem`, `Order\CustomerDetails` | Inputs to `createPendingOrder()` |
 | `Money\Money`, `Money\TaxRate` | Tax-inclusive amounts in integer cents, and tax rates in parts per million |
 | `Config\CommerceSettings` | The reference prefix, currency, tax rate and tax label |
-| `Artwork\ArtworkStatus`, `Artwork\ItemType`, `Enquiry\EnquiryStatus` | Stored states and their labels |
-| `Model\Entity\Abstract*Entity`, `Model\Entity\*Entity` | Attribute-mapped rows (artwork, order, order item, artist enquiry, enquiry file, email log): abstract bases and their final defaults |
-| `Model\Repository\*Repository` | Typed finders for each entity; `ArtworkRepository::claim()` |
+| `Item\ItemStatus` | Whether an item is listed for sale, and its label |
+| `Model\Entity\Abstract*Entity`, `Model\Entity\*Entity` | Attribute-mapped rows (item, item variant, order, order item, email log): abstract bases and their final defaults |
+| `Model\Repository\*Repository` | Typed finders for each entity; `ItemVariantRepository::claim()` |
 | `Payment\PaymentGatewayInterface` | The payment provider: checkout sessions, their expiry, and refunds |
 | `Payment\StripeGateway`, `Payment\UnconfiguredGateway` | The shipped gateways |
 | `Payment\CheckoutRequest`, `Payment\CheckoutLineItem`, `Payment\CheckoutSession`, `Payment\RefundResult` | Gateway values |
@@ -147,8 +148,8 @@ The [docs](docs/) folder covers each area:
 - [Orders and the lifecycle](docs/orders.md)
 - [Money and tax](docs/money.md)
 - [Payments and Stripe](docs/payments.md)
-- [Artworks](docs/artworks.md)
-- [Artist enquiries and the email log](docs/enquiries.md)
+- [Items and variants](docs/items.md)
+- [The email log](docs/email-log.md)
 - [Configuration and container](docs/configuration.md)
 - [Entities and your own columns](docs/entities.md)
 

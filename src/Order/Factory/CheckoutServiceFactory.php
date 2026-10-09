@@ -7,8 +7,8 @@ namespace Contenir\Commerce\Order\Factory;
 use Contenir\Commerce\Config\CommerceSettings;
 use Contenir\Commerce\Container\ServiceLocator;
 use Contenir\Commerce\Exception\ConfigurationException;
-use Contenir\Commerce\Order\ArtworkReservation;
 use Contenir\Commerce\Order\CheckoutService;
+use Contenir\Commerce\Order\ItemInventory;
 use Contenir\Commerce\Order\OrderStore;
 use Contenir\Commerce\Order\PurchaseItemCheck;
 use Contenir\Commerce\Payment\PaymentGatewayInterface;
@@ -30,7 +30,7 @@ final class CheckoutServiceFactory
     {
         return new CheckoutService(
             ServiceLocator::get($container, OrderStore::class),
-            ServiceLocator::get($container, ArtworkReservation::class),
+            ServiceLocator::get($container, ItemInventory::class),
             ServiceLocator::get($container, PurchaseItemCheck::class),
             ServiceLocator::get($container, PaymentGatewayInterface::class),
             ServiceLocator::get($container, CommerceSettings::class),

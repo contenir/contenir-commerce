@@ -5,12 +5,13 @@ declare(strict_types=1);
 namespace Contenir\Commerce\Tests\TestAsset\Order;
 
 use Contenir\Commerce\Config\CommerceSettings;
-use Contenir\Commerce\Model\Repository\ArtworkRepository;
+use Contenir\Commerce\Model\Repository\ItemRepository;
+use Contenir\Commerce\Model\Repository\ItemVariantRepository;
 use Contenir\Commerce\Model\Repository\OrderItemRepository;
 use Contenir\Commerce\Model\Repository\OrderRepository;
-use Contenir\Commerce\Order\ArtworkReservation;
 use Contenir\Commerce\Order\CheckoutService;
 use Contenir\Commerce\Order\CompletionService;
+use Contenir\Commerce\Order\ItemInventory;
 use Contenir\Commerce\Order\OrderStore;
 use Contenir\Commerce\Order\PurchaseItemCheck;
 use Contenir\Commerce\Order\Refunder;
@@ -30,7 +31,7 @@ use Psr\Clock\ClockInterface;
  */
 final readonly class CommerceProcess
 {
-    public ArtworkRepository $artworks;
+    public ItemVariantRepository $variants;
 
     public CheckoutService $checkout;
 
@@ -44,16 +45,16 @@ final readonly class CommerceProcess
         $adapter = new Adapter($driver, new AdapterPlatform($driver));
         $em      = new EntityManager($adapter);
 
-        $this->artworks = new ArtworkRepository($em, $adapter, TypeRegistry::withDefaults());
+        $this->variants = new ItemVariantRepository($em, $adapter, TypeRegistry::withDefaults());
         $store          = new OrderStore($em, new OrderRepository($em), new OrderItemRepository($em), $clock);
-        $reservation    = new ArtworkReservation($this->artworks);
+        $inventory      = new ItemInventory(new ItemRepository($em), $this->variants);
         $this->checkout = new CheckoutService(
             $store,
-            $reservation,
+            $inventory,
             new PurchaseItemCheck(),
             $gateway,
             new CommerceSettings(),
         );
-        $this->completion = new CompletionService($store, $reservation, new Refunder($gateway), $gateway);
+        $this->completion = new CompletionService($store, $inventory, new Refunder($gateway), $gateway);
     }
 }

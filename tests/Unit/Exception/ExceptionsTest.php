@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Contenir\Commerce\Tests\Unit\Exception;
 
-use Contenir\Commerce\Exception\ArtworkUnavailableException;
 use Contenir\Commerce\Exception\ConfigurationException;
 use Contenir\Commerce\Exception\ExceptionInterface;
 use Contenir\Commerce\Exception\InvalidArgumentException;
 use Contenir\Commerce\Exception\InvalidTransitionException;
+use Contenir\Commerce\Exception\ItemUnavailableException;
 use Contenir\Commerce\Exception\OrderNotFoundException;
 use Contenir\Commerce\Exception\OverflowException;
 use Contenir\Commerce\Exception\PaymentFailedException;
@@ -33,7 +33,7 @@ final class ExceptionsTest extends TestCase
     {
         return [
             'unavailable titles'     => [
-                ArtworkUnavailableException::forTitles(['Rip Tide', 'Moonah Study']),
+                ItemUnavailableException::forTitles(['Rip Tide', 'Moonah Study']),
                 'No longer available: Rip Tide, Moonah Study',
             ],
             'invalid service'        => [
@@ -101,14 +101,25 @@ final class ExceptionsTest extends TestCase
                     new PurchaseItem(7, 'Rip Tide', Money::fromCents(1_000)),
                     Money::fromCents(185_000),
                 ),
-                '"Rip Tide" (artwork 7) is priced $1,850.00, not $10.00',
+                '"Rip Tide" (variant 7) is priced $1,850.00, not $10.00',
             ],
             'mistitled item'         => [
                 PurchaseItemMismatchException::forTitle(
                     new PurchaseItem(7, 'Rip-tide', Money::fromCents(1_000)),
                     'Rip Tide',
                 ),
-                'Artwork 7 is titled "Rip Tide", not "Rip-tide"',
+                'The item of variant 7 is titled "Rip Tide", not "Rip-tide"',
+            ],
+            'mislabelled item'       => [
+                PurchaseItemMismatchException::forLabel(
+                    new PurchaseItem(7, 'Rip Tide', Money::fromCents(1_000), variantLabel: 'A2'),
+                    'A3',
+                ),
+                'Variant 7 of "Rip Tide" is labelled "A3", not "A2"',
+            ],
+            'unlabelled item'        => [
+                PurchaseItemMismatchException::forLabel(new PurchaseItem(7, 'Rip Tide', Money::fromCents(1_000)), 'A3'),
+                'Variant 7 of "Rip Tide" is labelled "A3", not ""',
             ],
             'invalid argument'       => [
                 new InvalidArgumentException('bad'),
@@ -118,29 +129,33 @@ final class ExceptionsTest extends TestCase
     }
 
     #[Test]
-    public function aMismatchedItemExceptionNamesTheArtwork(): void
+    public function aMismatchedItemExceptionNamesTheVariant(): void
     {
         static::assertSame(
-            [7, 7],
+            [7, 7, 7],
             [
                 PurchaseItemMismatchException::forPrice(
                     new PurchaseItem(7, 'Rip Tide', Money::fromCents(1_000)),
                     Money::fromCents(2_000),
-                )->getArtworkId(),
+                )->getItemVariantId(),
                 PurchaseItemMismatchException::forTitle(
                     new PurchaseItem(7, 'Rip Tide', Money::fromCents(1_000)),
                     'Rip-tide',
-                )->getArtworkId(),
+                )->getItemVariantId(),
+                PurchaseItemMismatchException::forLabel(
+                    new PurchaseItem(7, 'Rip Tide', Money::fromCents(1_000)),
+                    'A3',
+                )->getItemVariantId(),
             ],
         );
     }
 
     #[Test]
-    public function anUnavailableArtworkExceptionCarriesTheTitles(): void
+    public function anUnavailableItemExceptionCarriesTheTitles(): void
     {
         static::assertSame(
             ['Rip Tide', 'Moonah Study'],
-            ArtworkUnavailableException::forTitles(['Rip Tide', 'Moonah Study'])->getTitles(),
+            ItemUnavailableException::forTitles(['Rip Tide', 'Moonah Study'])->getTitles(),
         );
     }
 

@@ -7,9 +7,9 @@ namespace Contenir\Commerce\Model\Entity;
 use Contenir\Db\Model\Mapping\Table;
 
 /**
- * The default order entity, mapped to the "gallery_order" table.
+ * The default order entity, mapped to the "commerce_order" table.
  *
  * @api
  */
-#[Table('gallery_order')]
+#[Table('commerce_order')]
 final class OrderEntity extends AbstractOrderEntity {}

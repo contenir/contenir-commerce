@@ -103,7 +103,7 @@ final class CommerceSettingsFactoryTest extends TestCase
         $settings = (new CommerceSettingsFactory())(new ArrayContainer([]));
 
         static::assertSame(
-            ['LR', 'AUD', 100_000, 'GST'],
+            ['ORD', 'AUD', 100_000, 'GST'],
             [
                 $settings->orderReferencePrefix,
                 $settings->currency,

@@ -82,8 +82,8 @@ final readonly class FulfilmentService
 
     /**
      * Refunds through the payment provider and closes the order; a null
-     * amount refunds in full. Artwork availability is left untouched:
-     * returning a work to sale is a curatorial decision made in the CMS, not
+     * amount refunds in full. Stock is left untouched: putting refunded
+     * units back on sale is a decision made in the CMS, not
      * a side effect.
      *
      * @throws PaymentFailedException When the order has no payment or the provider refuses the refund.

@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Contenir\Commerce\Order;
 
-use Contenir\Commerce\Exception\ArtworkUnavailableException;
 use Contenir\Commerce\Exception\InvalidTransitionException;
+use Contenir\Commerce\Exception\ItemUnavailableException;
 use Contenir\Commerce\Exception\OrderNotFoundException;
 use Contenir\Commerce\Exception\PaymentFailedException;
 use Contenir\Commerce\Model\Entity\AbstractOrderEntity;
@@ -18,10 +18,10 @@ use Throwable;
  * Settles orders from their checkout sessions, for the payment provider's
  * webhook and the thank-you page.
  *
- * There are no customer holds: if two buyers pay for the same work, the
- * first completed payment wins and the second is refunded in full. Each
- * work is claimed with a conditional update, so two payments completing at
- * the same instant cannot both win it.
+ * There are no customer holds: if two buyers pay for the last of an item,
+ * the first completed payment wins and the second is refunded in full.
+ * Stock is claimed with a conditional update, so two payments completing at
+ * the same instant cannot both take the same units.
  * Completion is idempotent: webhook retries and thank-you page revisits for
  * an order that is already settled change nothing, and the refunds it
  * issues carry idempotency keys, so a retry after a failure part-way
@@ -33,7 +33,7 @@ final readonly class CompletionService
 {
     public function __construct(
         private OrderStore $store,
-        private ArtworkReservation $reservation,
+        private ItemInventory $inventory,
         private Refunder $refunder,
         private PaymentGatewayInterface $gateway,
     ) {}
@@ -85,16 +85,16 @@ final readonly class CompletionService
     /**
      * @param list<PurchaseItem> $items
      *
-     * @throws ArtworkUnavailableException When a work could not be claimed.
+     * @throws ItemUnavailableException When an item could not be claimed.
      * @throws InvalidTransitionException
      * @throws DbModelException
      */
     private function claimAndMarkPaid(AbstractOrderEntity $order, CheckoutSession $session, array $items): void
     {
         $now  = $this->store->now();
-        $lost = $this->reservation->claim($items, $now);
+        $lost = $this->inventory->claim($items, $now);
         if ([] !== $lost) {
-            throw ArtworkUnavailableException::forTitles($lost);
+            throw ItemUnavailableException::forTitles($lost);
         }
 
         $order->stripePaymentIntentId = $session->paymentIntentId;
@@ -105,7 +105,7 @@ final readonly class CompletionService
     }
 
     /**
-     * Claims every work of the order with a conditional update and marks
+     * Claims every item of the order with a conditional update and marks
      * the order paid, in one transaction. When any claim fails (another
      * buyer's payment completed first), the transaction is rolled back,
      * releasing the claims that succeeded, and the payment is refunded.
@@ -125,7 +125,7 @@ final readonly class CompletionService
         try {
             $this->store->transactional(
                 /**
-                 * @throws ArtworkUnavailableException When a work could not be claimed; rolls the claims back.
+                 * @throws ItemUnavailableException When an item could not be claimed; rolls the claims back.
                  * @throws InvalidTransitionException
                  * @throws DbModelException
                  */
@@ -133,7 +133,7 @@ final readonly class CompletionService
                     $this->claimAndMarkPaid($order, $session, $items);
                 },
             );
-        } catch (ArtworkUnavailableException $e) {
+        } catch (ItemUnavailableException $e) {
             return $this->store->transactional(
                 /**
                  * @throws PaymentFailedException
@@ -144,14 +144,14 @@ final readonly class CompletionService
             );
         }
 
-        $this->reservation->refresh($items);
+        $this->inventory->refresh($items);
 
         return new CompletionResult($order, CompletionOutcome::Completed);
     }
 
     /**
      * First completed payment wins: this payment arrived second for at least
-     * one work, so refund it in full and close the order as paid-then-refunded.
+     * one item, so refund it in full and close the order as paid-then-refunded.
      *
      * The order is re-read first: if another completion of the same order
      * (the webhook and the thank-you page at once) settled it meanwhile, its
