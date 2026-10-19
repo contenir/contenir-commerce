@@ -16,6 +16,7 @@ use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 
+use function array_map;
 use function count;
 
 /**
@@ -45,8 +46,11 @@ final class OrderManagerTest extends TestCase
         $this->manager->refundOrder($order, Money::fromCents(50_000));
 
         static::assertSame(
-            ['refunded', [['paymentIntentId' => 'pi_fake_1', 'amount' => 50_000, 'idempotencyKey' => null]]],
-            [$this->orderRow(['status'])['status'], $this->gateway->refunds],
+            [['status' => 'paid', 'refunded_amount' => 50_000], [50_000]],
+            [
+                $this->orderRow(['status', 'refunded_amount']),
+                array_map(static fn(array $refund): ?int => $refund['amount'], $this->gateway->refunds),
+            ],
         );
     }
 

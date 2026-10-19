@@ -61,6 +61,12 @@ abstract class AbstractOrderEntity
     #[Column('gst_amount')]
     public int $gstAmount = 0;
 
+    /**
+     * The tax-inclusive amount refunded so far, in cents; the total once the order is refunded in full.
+     */
+    #[Column('refunded_amount')]
+    public int $refundedAmount = 0;
+
     #[Column('stripe_checkout_session_id')]
     public ?string $stripeCheckoutSessionId = null;
 
@@ -115,6 +121,14 @@ abstract class AbstractOrderEntity
     public function getId(): int
     {
         return $this->orderId ?? throw OrderNotFoundException::unsaved();
+    }
+
+    /**
+     * @throws InvalidArgumentException When the stored amount is negative.
+     */
+    public function getRefundedAmount(): Money
+    {
+        return Money::fromCents($this->refundedAmount);
     }
 
     /**

@@ -4,7 +4,30 @@
 and the `v0.*` tags under the old name, `contenir/commerce`.
 
 From 0.2 to 2.0.0-RC2 the database tables and columns are unchanged. 2.0.0-RC3 replaces the gallery's artworks with
-items and variants, and renames the order tables: see below.
+items and variants, and renames the order tables, and after RC3 `commerce_order` gains `refunded_amount`: see below.
+
+## After 2.0.0-RC3
+
+### Partial refunds
+
+`refundOrder()` used to move an order to `refunded` whatever the amount. It now records each refund in the order's new
+`refundedAmount` and keeps the order's status (`paid`, `awaiting_pickup` or `collected`) until its refunds add up to
+the total; that refund moves the order to `refunded` and sets `refundedAt`. A null amount refunds what is left, and an
+amount larger than what is left throws `InvalidArgumentException` before Stripe is called. Show `refundedAmount`
+beside the status wherever staff see a partly refunded order. See [docs/orders.md](docs/orders.md#refunds).
+
+### Database
+
+Add the column, and record the orders already refunded as refunded in full (MySQL):
+
+```sql
+ALTER TABLE commerce_order ADD refunded_amount int unsigned NOT NULL DEFAULT 0 AFTER gst_amount;
+UPDATE commerce_order SET refunded_amount = total WHERE refunded_at IS NOT NULL;
+```
+
+`refunded_at` is set on every order the package has refunded: `refunded` ones, and `cancelled` ones whose late
+payment was refunded. An order refunded in part before this change was moved to `refunded` and is recorded as
+refunded in full; check Stripe for any you know were refunded in part.
 
 ## From 2.0.0-RC2 to 2.0.0-RC3
 
@@ -337,7 +360,7 @@ Criteria and ordering use **property** names: `['artwork_id' => 1]` becomes `['a
 | `expireCheckout(string)` | Unchanged |
 | `markAwaitingPickup(OrderEntity)`, `markCollected(OrderEntity)` | Unchanged |
 | `cancelOrder(OrderEntity)` | Same; expires the checkout session of a pending order first |
-| `refundOrder(OrderEntity, ?Money)` | Unchanged; the no-payment error is `PaymentFailedException` |
+| `refundOrder(OrderEntity, ?Money)` | Refunds in parts: the order keeps its status until its refunds add up to the total (see "After 2.0.0-RC3"); the no-payment error is `PaymentFailedException` |
 | `purchaseItemsFor(OrderEntity)` | Unchanged |
 
 ### Entities
@@ -366,6 +389,7 @@ Properties are typed, camelCase and mapped to the same snake_case columns. Unlis
 | `customer_name`, `customer_email`, `customer_phone` | `customerName`, `customerEmail`, `customerPhone` |
 | `status` (`string`) | `status` (`OrderStatus`) |
 | `total`, `gst_amount` | `total`, `gstAmount` (`int`), also `getTotal()`/`getGstAmount(): Money` |
+| (none) | `refundedAmount` (`int`, column `refunded_amount`, after RC3), also `getRefundedAmount(): Money` |
 | `stripe_checkout_session_id`, `stripe_payment_intent_id` | `stripeCheckoutSessionId`, `stripePaymentIntentId` |
 | `customer_notes`, `staff_notes` | `customerNotes`, `staffNotes` |
 | `paid_at`, `collected_at`, `refunded_at`, `cancelled_at` | `paidAt`, `collectedAt`, `refundedAt`, `cancelledAt` |

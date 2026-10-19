@@ -146,6 +146,7 @@ final readonly class OrderManager
      *
      * @throws PaymentFailedException When the order has no payment or the provider refuses the refund.
      * @throws InvalidTransitionException When the order cannot be refunded.
+     * @throws InvalidArgumentException When the amount is more than is left to refund.
      * @throws DbModelException
      */
     public function refundOrder(AbstractOrderEntity $order, ?Money $amount = null): void

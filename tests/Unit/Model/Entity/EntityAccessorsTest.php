@@ -63,11 +63,15 @@ final class EntityAccessorsTest extends TestCase
     #[Test]
     public function anOrderExposesItsTotalsAsMoney(): void
     {
-        $order            = new OrderEntity();
-        $order->total     = 283_000;
-        $order->gstAmount = 25_727;
+        $order                 = new OrderEntity();
+        $order->total          = 283_000;
+        $order->gstAmount      = 25_727;
+        $order->refundedAmount = 50_000;
 
-        static::assertSame([283_000, 25_727], [$order->getTotal()->amount, $order->getGstAmount()->amount]);
+        static::assertSame(
+            [283_000, 25_727, 50_000],
+            [$order->getTotal()->amount, $order->getGstAmount()->amount, $order->getRefundedAmount()->amount],
+        );
     }
 
     #[Test]
@@ -139,12 +143,13 @@ final class EntityAccessorsTest extends TestCase
         $line    = new OrderItemEntity();
 
         static::assertSame(
-            ['', 'pending', 0, 0, null, 'listed', null, null, 0, null, 0, 0, 1],
+            ['', 'pending', 0, 0, 0, null, 'listed', null, null, 0, null, 0, 0, 1],
             [
                 $order->orderRef,
                 $order->status->value,
                 $order->total,
                 $order->gstAmount,
+                $order->refundedAmount,
                 $item->title,
                 $item->status->value,
                 $variant->label,

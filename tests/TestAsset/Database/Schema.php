@@ -39,6 +39,7 @@ final class Schema
                 order_id INTEGER PRIMARY KEY AUTOINCREMENT, order_ref TEXT NOT NULL, customer_name TEXT,
                 customer_email TEXT, customer_phone TEXT, status TEXT NOT NULL DEFAULT \'pending\',
                 total INTEGER NOT NULL DEFAULT 0, gst_amount INTEGER NOT NULL DEFAULT 0,
+                refunded_amount INTEGER NOT NULL DEFAULT 0,
                 stripe_checkout_session_id TEXT, stripe_payment_intent_id TEXT, customer_notes TEXT,
                 staff_notes TEXT, paid_at TEXT, collected_at TEXT, refunded_at TEXT, cancelled_at TEXT,
                 created TEXT, updated TEXT, gift_message TEXT
