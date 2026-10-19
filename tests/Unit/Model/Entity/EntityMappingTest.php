@@ -58,6 +58,7 @@ final class EntityMappingTest extends TestCase
                     'status',
                     'total',
                     'gst_amount',
+                    'refunded_amount',
                     'stripe_checkout_session_id',
                     'stripe_payment_intent_id',
                     'customer_notes',

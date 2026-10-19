@@ -37,9 +37,21 @@ only through `transitionTo()`, so no method can skip a step.
 | `expireCheckout(sessionId)` | Cancels the order if it is still pending; returns it, or null. Stripe is not called: the session has already expired | |
 | `markAwaitingPickup(order)` | `paid` → `awaiting_pickup` | `InvalidTransitionException` |
 | `markCollected(order)` | `awaiting_pickup` → `collected`, sets `collectedAt` | `InvalidTransitionException` |
-| `refundOrder(order, ?Money)` | Refunds through the gateway (null: in full) and moves to `refunded`; stock is not returned | `PaymentFailedException` (no payment, provider refused), `InvalidTransitionException` |
+| `refundOrder(order, ?Money)` | Refunds through the gateway (null: whatever is left) and adds it to `refundedAmount`; moves to `refunded` once the refunds add up to the total (below); stock is not returned | `PaymentFailedException` (no payment, provider refused), `InvalidTransitionException`, `InvalidArgumentException` (more than is left) |
 | `cancelOrder(order)` | Expires the checkout session of a pending order (below), then moves to `cancelled` and sets `cancelledAt` | `InvalidTransitionException`, `PaymentFailedException` |
 | `purchaseItemsFor(order)` | The order's lines as `PurchaseItem`s, in the order they were added | |
+
+### Refunds
+
+An order that is `paid`, `awaiting_pickup` or `collected` can be refunded in parts. Each refund adds to the order's
+`refundedAmount` (`getRefundedAmount()`, in cents like `total`), and the order keeps its status until its refunds add
+up to its total; the refund that completes it moves the order to `refunded` and sets `refundedAt`. A null amount
+refunds whatever is left. An amount larger than what is left throws `InvalidArgumentException` before the gateway is
+called, and a `refunded` order cannot be refunded again (`InvalidTransitionException`).
+
+Each refund carries an idempotency key made of the payment intent, the amount refunded before it and its own amount,
+so retrying a refund whose order failed to save refunds once. Submitting the same refund again after it was saved is
+a second refund, limited to what is left.
 
 Each checkout attempt needs its own pending order. `beginCheckout()` refuses an order whose checkout has already
 begun, so that a payment through an older session can always be matched to its order.
@@ -75,8 +87,8 @@ including at the same time:
 | --- | --- | --- |
 | `pending` | not paid (open, or complete with funds still to come) | `NotPaid`; nothing changes |
 | `pending` | paid, every item claimed | `Completed`: the order is `paid` and its units taken from stock, in one transaction |
-| `pending` | paid, the last units of an item sold to someone else first | `RefundedRace`: refunded in full, order `refunded`; `unavailableTitles` lists the lost items |
-| `cancelled` | paid (the order was cancelled while the buyer paid) | `RefundedCancelled`: refunded in full, order stays `cancelled` |
+| `pending` | paid, the last units of an item sold to someone else first | `RefundedRace`: refunded in full, order `refunded` with `refundedAmount` set to the total; `unavailableTitles` lists the lost items |
+| `cancelled` | paid (the order was cancelled while the buyer paid) | `RefundedCancelled`: refunded in full, order stays `cancelled` with `refundedAmount` set to the total |
 | `cancelled` | not paid | `NotPaid` |
 | anything else | not consulted | `AlreadyCompleted` |
 

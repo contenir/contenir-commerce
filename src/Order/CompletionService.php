@@ -173,11 +173,12 @@ final readonly class CompletionService
         $order->stripePaymentIntentId = $session->paymentIntentId;
         $this->refunder->refundInFull($order, 'race');
 
-        $now               = $this->store->now();
-        $order->status     = $order->status->transitionTo(OrderStatus::Paid)->transitionTo(OrderStatus::Refunded);
-        $order->paidAt     = $now;
-        $order->refundedAt = $now;
-        $order->updated    = $now;
+        $now                   = $this->store->now();
+        $order->status         = $order->status->transitionTo(OrderStatus::Paid)->transitionTo(OrderStatus::Refunded);
+        $order->refundedAmount = $order->total;
+        $order->paidAt         = $now;
+        $order->refundedAt     = $now;
+        $order->updated        = $now;
         $this->store->save($order);
 
         return new CompletionResult($order, CompletionOutcome::RefundedRace, $lost);
@@ -205,10 +206,11 @@ final readonly class CompletionService
         $order->stripePaymentIntentId = $session->paymentIntentId;
         $this->refunder->refundInFull($order, 'cancelled');
 
-        $now               = $this->store->now();
-        $order->paidAt     = $now;
-        $order->refundedAt = $now;
-        $order->updated    = $now;
+        $now                   = $this->store->now();
+        $order->refundedAmount = $order->total;
+        $order->paidAt         = $now;
+        $order->refundedAt     = $now;
+        $order->updated        = $now;
         $this->store->save($order);
 
         return new CompletionResult($order, CompletionOutcome::RefundedCancelled);

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Contenir\Commerce\Tests\Integration\Order;
 
+use Contenir\Commerce\Exception\InvalidArgumentException;
 use Contenir\Commerce\Exception\InvalidTransitionException;
 use Contenir\Commerce\Exception\PaymentFailedException;
 use Contenir\Commerce\Money\Money;
@@ -13,9 +14,14 @@ use Contenir\Commerce\Payment\CheckoutSession;
 use Contenir\Commerce\Tests\TestAsset\Factory\CommerceFactory;
 use Contenir\Commerce\Tests\Trait\OrderServicesTrait;
 use Override;
+use PhpDb\Adapter\Exception\InvalidQueryException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+
+use function array_map;
+use function count;
 
 /**
  * The back-office steps, against a real in-memory database and a
@@ -25,6 +31,37 @@ use PHPUnit\Framework\TestCase;
 final class FulfilmentServiceTest extends TestCase
 {
     use OrderServicesTrait;
+
+    /**
+     * @return array<string, array{int, int, string}>
+     */
+    public static function excessiveRefundProvider(): array
+    {
+        return [
+            'more than the total'    => [
+                0,
+                283_001,
+                'Cannot refund $2,830.01 on order "ORD-2026-0001": only $2,830.00 of its $2,830.00 total is left to refund',
+            ],
+            'more than what is left' => [
+                50_000,
+                233_001,
+                'Cannot refund $2,330.01 on order "ORD-2026-0001": only $2,330.00 of its $2,830.00 total is left to refund',
+            ],
+        ];
+    }
+
+    /**
+     * @return array<string, array{OrderStatus}>
+     */
+    public static function refundableStatusProvider(): array
+    {
+        return [
+            'paid'            => [OrderStatus::Paid],
+            'awaiting pickup' => [OrderStatus::AwaitingPickup],
+            'collected'       => [OrderStatus::Collected],
+        ];
+    }
 
     #[Test]
     public function aCollectedOrderCannotBeCancelled(): void
@@ -37,6 +74,23 @@ final class FulfilmentServiceTest extends TestCase
         $this->expectExceptionMessage('Order cannot move from "collected" to "cancelled"');
 
         $this->fulfilment->cancelOrder($order);
+    }
+
+    #[Test]
+    public function aFullyRefundedOrderCannotBeRefundedAgain(): void
+    {
+        $order = $this->paidOrder();
+        $this->fulfilment->refundOrder($order);
+
+        try {
+            $this->fulfilment->refundOrder($order);
+            static::fail('Expected InvalidTransitionException');
+        } catch (InvalidTransitionException $e) {
+            static::assertSame(
+                ['Order cannot move from "refunded" to "refunded"', 1],
+                [$e->getMessage(), count($this->gateway->refunds)],
+            );
+        }
     }
 
     #[Test]
@@ -53,22 +107,59 @@ final class FulfilmentServiceTest extends TestCase
         }
     }
 
+    #[DataProvider('refundableStatusProvider')]
     #[Test]
-    public function aRefundGoesThroughTheGatewayAndClosesTheOrder(): void
+    public function aPartialRefundKeepsTheStatusAndRecordsTheAmountRefunded(OrderStatus $status): void
     {
-        $order = $this->paidOrder();
+        $order         = $this->paidOrder();
+        $order->status = $status;
         $this->clock->moveTo('2026-08-25 15:00:00');
 
         $this->fulfilment->refundOrder($order, Money::fromCents(50_000));
 
         static::assertSame(
             [
-                [['paymentIntentId' => 'pi_fake_1', 'amount' => 50_000, 'idempotencyKey' => null]],
-                ['status' => 'refunded', 'refunded_at' => '2026-08-25 15:00:00', 'updated' => '2026-08-25 15:00:00'],
+                [[
+                    'paymentIntentId' => 'pi_fake_1',
+                    'amount'          => 50_000,
+                    'idempotencyKey'  => 'contenir-commerce-staff-refund-pi_fake_1-0-50000',
+                ]],
+                [
+                    'status'          => $status->value,
+                    'refunded_amount' => 50_000,
+                    'refunded_at'     => null,
+                    'updated'         => '2026-08-25 15:00:00',
+                ],
                 0,
             ],
-            [$this->gateway->refunds, $this->orderRow(['status', 'refunded_at', 'updated']), $this->variantStock(1)],
+            [
+                $this->gateway->refunds,
+                $this->orderRow(['status', 'refunded_amount', 'refunded_at', 'updated']),
+                $this->variantStock(1),
+            ],
         );
+    }
+
+    #[DataProvider('excessiveRefundProvider')]
+    #[Test]
+    public function aRefundBeyondWhatIsLeftIsRejectedBeforeAnyMoneyMoves(
+        int $refundedBefore,
+        int $refund,
+        string $message,
+    ): void {
+        $order                 = $this->paidOrder();
+        $order->refundedAmount = $refundedBefore;
+        $this->em->save($order);
+
+        try {
+            $this->fulfilment->refundOrder($order, Money::fromCents($refund));
+            static::fail('Expected InvalidArgumentException');
+        } catch (InvalidArgumentException $e) {
+            static::assertSame(
+                [$message, [], ['status' => 'paid', 'refunded_amount' => $refundedBefore]],
+                [$e->getMessage(), $this->gateway->refunds, $this->orderRow(['status', 'refunded_amount'])],
+            );
+        }
     }
 
     #[Test]
@@ -101,6 +192,33 @@ final class FulfilmentServiceTest extends TestCase
     }
 
     #[Test]
+    public function aRefundWithoutAnAmountRefundsWhatIsLeftAndClosesTheOrder(): void
+    {
+        $order = $this->paidOrder();
+        $this->fulfilment->refundOrder($order, Money::fromCents(50_000));
+        $this->clock->moveTo('2026-08-26 09:30:00');
+
+        $this->fulfilment->refundOrder($order);
+
+        static::assertSame(
+            [
+                [
+                    'paymentIntentId' => 'pi_fake_1',
+                    'amount'          => null,
+                    'idempotencyKey'  => 'contenir-commerce-staff-refund-pi_fake_1-50000-233000',
+                ],
+                [
+                    'status'          => 'refunded',
+                    'refunded_amount' => 283_000,
+                    'refunded_at'     => '2026-08-26 09:30:00',
+                    'updated'         => '2026-08-26 09:30:00',
+                ],
+            ],
+            [$this->gateway->refunds[1], $this->orderRow(['status', 'refunded_amount', 'refunded_at', 'updated'])],
+        );
+    }
+
+    #[Test]
     public function aRefundWithoutAPaymentIsRejected(): void
     {
         $order = $this->checkedOutOrder();
@@ -109,6 +227,39 @@ final class FulfilmentServiceTest extends TestCase
         $this->expectExceptionMessage('Order "ORD-2026-0001" has no Stripe payment to refund');
 
         $this->fulfilment->refundOrder($order);
+    }
+
+    #[Test]
+    public function aRetryAfterTheOrderFailedToSaveReusesTheIdempotencyKey(): void
+    {
+        $order = $this->paidOrder();
+        $this->updateBehindTheManager(
+            "CREATE TRIGGER refund_not_saved BEFORE UPDATE ON commerce_order BEGIN SELECT RAISE(ABORT, 'disk full'); END",
+        );
+
+        try {
+            $this->fulfilment->refundOrder($order, Money::fromCents(50_000));
+            static::fail('Expected InvalidQueryException');
+        } catch (InvalidQueryException) {
+            $this->updateBehindTheManager('DROP TRIGGER refund_not_saved');
+        }
+
+        $this->em->refresh($order);
+        $this->fulfilment->refundOrder($order, Money::fromCents(50_000));
+
+        static::assertSame(
+            [
+                [
+                    'contenir-commerce-staff-refund-pi_fake_1-0-50000',
+                    'contenir-commerce-staff-refund-pi_fake_1-0-50000',
+                ],
+                ['status' => 'paid', 'refunded_amount' => 50_000],
+            ],
+            [
+                array_map(static fn(array $refund): ?string => $refund['idempotencyKey'], $this->gateway->refunds),
+                $this->orderRow(['status', 'refunded_amount']),
+            ],
+        );
     }
 
     #[Test]
@@ -137,6 +288,18 @@ final class FulfilmentServiceTest extends TestCase
                 $this->gateway->refunds,
                 $this->orderRow(['status'])['status'],
             ],
+        );
+    }
+
+    #[Test]
+    public function aWebhookRetryAfterAPartialRefundRefundsNothingMore(): void
+    {
+        $order = $this->paidOrder();
+        $this->fulfilment->refundOrder($order, Money::fromCents(50_000));
+
+        static::assertSame(
+            [CompletionOutcome::AlreadyCompleted, 1],
+            [$this->completion->completeFromCheckoutSession('cs_fake_1')->outcome, count($this->gateway->refunds)],
         );
     }
 
@@ -179,6 +342,28 @@ final class FulfilmentServiceTest extends TestCase
                 $this->gateway->retrieveCheckoutSession('cs_fake_1')->status,
                 $this->orderRow(['status', 'cancelled_at', 'updated']),
             ],
+        );
+    }
+
+    #[Test]
+    public function refundsThatAddUpToTheTotalCloseTheOrder(): void
+    {
+        $order = $this->paidOrder();
+        $this->fulfilment->refundOrder($order, Money::fromCents(50_000));
+        $this->clock->moveTo('2026-08-27 11:00:00');
+
+        $this->fulfilment->refundOrder($order, Money::fromCents(233_000));
+
+        static::assertSame(
+            [
+                [
+                    'paymentIntentId' => 'pi_fake_1',
+                    'amount'          => 233_000,
+                    'idempotencyKey'  => 'contenir-commerce-staff-refund-pi_fake_1-50000-233000',
+                ],
+                ['status' => 'refunded', 'refunded_amount' => 283_000, 'refunded_at' => '2026-08-27 11:00:00'],
+            ],
+            [$this->gateway->refunds[1], $this->orderRow(['status', 'refunded_amount', 'refunded_at'])],
         );
     }
 

@@ -48,6 +48,7 @@ final class CompletionServiceTest extends TestCase
                 ]],
                 [
                     'status'                   => 'cancelled',
+                    'refunded_amount'          => 283_000,
                     'stripe_payment_intent_id' => 'pi_late',
                     'paid_at'                  => '2026-08-20 10:10:00',
                     'refunded_at'              => '2026-08-20 10:10:00',
@@ -61,6 +62,7 @@ final class CompletionServiceTest extends TestCase
                 $this->gateway->refunds,
                 $this->orderRow([
                     'status',
+                    'refunded_amount',
                     'stripe_payment_intent_id',
                     'paid_at',
                     'refunded_at',
@@ -334,6 +336,7 @@ final class CompletionServiceTest extends TestCase
                 ]],
                 [
                     'status'                   => 'refunded',
+                    'refunded_amount'          => 185_000,
                     'stripe_payment_intent_id' => 'pi_second',
                     'paid_at'                  => '2026-08-20 11:00:00',
                     'refunded_at'              => '2026-08-20 11:00:00',
@@ -344,7 +347,10 @@ final class CompletionServiceTest extends TestCase
                 $result->outcome,
                 $result->unavailableTitles,
                 $this->gateway->refunds,
-                $this->orderRow(['status', 'stripe_payment_intent_id', 'paid_at', 'refunded_at', 'updated'], 2),
+                $this->orderRow(
+                    ['status', 'refunded_amount', 'stripe_payment_intent_id', 'paid_at', 'refunded_at', 'updated'],
+                    2,
+                ),
             ],
         );
     }

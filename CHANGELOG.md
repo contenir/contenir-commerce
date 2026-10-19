@@ -4,6 +4,36 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] - 2026-10-19
+
+Partial refunds. See "After 2.0.0-RC3" in [UPGRADE-2.0.md](UPGRADE-2.0.md).
+
+### Added
+
+- `AbstractOrderEntity::$refundedAmount` (the `refunded_amount` column, in cents) and `getRefundedAmount(): Money`:
+  how much of the order has been refunded so far. **The `commerce_order` table needs the new column** (MySQL):
+
+  ```sql
+  ALTER TABLE commerce_order ADD refunded_amount int unsigned NOT NULL DEFAULT 0 AFTER gst_amount;
+  UPDATE commerce_order SET refunded_amount = total WHERE refunded_at IS NOT NULL;
+  ```
+
+### Fixed
+
+- `refundOrder()` with less than what is left to refund no longer moves the order to `refunded`. The order keeps its
+  status (`paid`, `awaiting_pickup` or `collected`) and the amount is added to `refundedAmount`; the refund that
+  brings `refundedAmount` to the total moves the order to `refunded` and sets `refundedAt`. A null amount refunds
+  what is left.
+- `refundOrder()` rejects an amount larger than what is left to refund with `InvalidArgumentException`, before the
+  gateway is called.
+
+### Changed
+
+- `refundOrder()` sends the idempotency key `contenir-commerce-staff-refund-<payment intent>-<refunded before>-<amount
+  in cents>`, so retrying a refund whose order failed to save refunds once.
+- The refunds completion issues for a lost race (`RefundedRace`) and a cancelled order (`RefundedCancelled`) set
+  `refundedAmount` to the total.
+
 ## [2.0.0-RC3] - Unreleased
 
 Sell anything, not only artworks. See "From 2.0.0-RC2 to 2.0.0-RC3" in [UPGRADE-2.0.md](UPGRADE-2.0.md).
@@ -212,6 +242,7 @@ The port to contenir-db-model 2, under the new package name. See [UPGRADE-2.0.md
 
 - The commerce domain: money, the order lifecycle, Stripe checkout and the entities.
 
+[Unreleased]: https://github.com/contenir/contenir-commerce/compare/v2.0.0-RC3...main
 [2.0.0-RC2]: https://github.com/contenir/contenir-commerce/compare/v2.0.0-RC1...main
 [2.0.0-RC1]: https://github.com/contenir/contenir-commerce/compare/v0.2.1...v2.0.0-RC1
 [0.2.1]: https://github.com/contenir/contenir-commerce/compare/v0.2.0...v0.2.1
